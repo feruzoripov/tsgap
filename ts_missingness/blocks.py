@@ -1,7 +1,7 @@
 """Block missingness patterns for time-series data."""
 
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 def apply_block_missingness(
@@ -9,6 +9,7 @@ def apply_block_missingness(
     shape: Tuple[int, ...],
     block_len: int = 10,
     block_density: float = 0.7,
+    rng: Optional[np.random.Generator] = None,
     **kwargs
 ) -> np.ndarray:
     """Apply block (contiguous) missingness pattern.
@@ -25,12 +26,17 @@ def apply_block_missingness(
         Length of each missing block (in time steps)
     block_density : float
         Fraction of total missingness allocated to blocks (0.0 to 1.0)
+    rng : np.random.Generator, optional
+        Random number generator for reproducibility
     
     Returns
     -------
     mask : np.ndarray
         Modified mask with block patterns
     """
+    if rng is None:
+        rng = np.random.default_rng()
+    
     if not 0.0 <= block_density <= 1.0:
         raise ValueError("block_density must be between 0.0 and 1.0")
     
@@ -53,7 +59,7 @@ def apply_block_missingness(
     if n_point_missing < n_missing:
         # Randomly select which missing points to restore
         n_to_restore = n_missing - n_point_missing
-        restore_idx = np.random.choice(
+        restore_idx = rng.choice(
             len(missing_indices[0]), size=n_to_restore, replace=False
         )
         
@@ -71,7 +77,7 @@ def apply_block_missingness(
     
     # Add block missingness
     if n_block_missing > 0:
-        new_mask = _add_blocks(new_mask, shape, block_len, n_block_missing)
+        new_mask = _add_blocks(new_mask, shape, block_len, n_block_missing, rng)
     
     return new_mask
 
@@ -80,7 +86,8 @@ def _add_blocks(
     mask: np.ndarray,
     shape: Tuple[int, ...],
     block_len: int,
-    n_target: int
+    n_target: int,
+    rng: np.random.Generator
 ) -> np.ndarray:
     """Add contiguous missing blocks to mask."""
     
@@ -99,12 +106,12 @@ def _add_blocks(
         
         # Randomly select sample (if 3D), dimension, and start time
         if N > 1:
-            n_idx = np.random.randint(0, N)
+            n_idx = rng.integers(0, N)
         else:
             n_idx = 0
         
-        d_idx = np.random.randint(0, D)
-        t_start = np.random.randint(0, max(1, T - block_len + 1))
+        d_idx = rng.integers(0, D)
+        t_start = rng.integers(0, max(1, T - block_len + 1))
         t_end = min(t_start + block_len, T)
         
         # Apply block

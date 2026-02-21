@@ -23,6 +23,7 @@ def simulate_missingness(
         One of "mcar", "mar", "mnar"
     missing_rate : float
         Target fraction of missing values (0.0 to 1.0)
+        Applied to eligible (non-NaN) entries
     seed : int, optional
         Random seed for reproducibility
     **kwargs : dict
@@ -35,6 +36,8 @@ def simulate_missingness(
         MAR:
             driver_dims : list[int], required
                 Dimensions that drive missingness
+            target : str or list[int]
+                "all" (default) or list of dimension indices to mask
             strength : float, default=2.0
                 Dependency strength
             base_rate : float, default=0.01
@@ -45,6 +48,8 @@ def simulate_missingness(
         MNAR:
             mnar_mode : str, default="extreme"
                 "high", "low", or "extreme"
+            target : str or list[int]
+                "all" (default) or list of dimension indices to mask
             strength : float, default=2.0
                 Dependency strength
         
@@ -63,8 +68,8 @@ def simulate_missingness(
     mask : np.ndarray
         Boolean mask (True=observed, False=missing)
     """
-    if seed is not None:
-        np.random.seed(seed)
+    # Create RNG for reproducibility
+    rng = np.random.default_rng(seed)
     
     # Validate inputs
     if not isinstance(X, np.ndarray):
@@ -86,15 +91,16 @@ def simulate_missingness(
     
     # Generate mechanism-specific mask
     if mechanism == "mcar":
-        mask = apply_mcar(X, missing_rate, existing_nans, **kwargs)
+        mask = apply_mcar(X, missing_rate, existing_nans, rng=rng, **kwargs)
     elif mechanism == "mar":
-        mask = apply_mar(X, missing_rate, existing_nans, **kwargs)
+        mask = apply_mar(X, missing_rate, existing_nans, rng=rng, **kwargs)
     elif mechanism == "mnar":
-        mask = apply_mnar(X, missing_rate, existing_nans, **kwargs)
+        mask = apply_mnar(X, missing_rate, existing_nans, rng=rng, **kwargs)
     
     # Apply block missingness if requested
     if kwargs.get("block", False):
-        mask = apply_block_missingness(mask, X.shape, **kwargs)
+        # Block missingness also needs rng for reproducibility
+        mask = apply_block_missingness(mask, X.shape, rng=rng, **kwargs)
     
     # Apply mask
     X_missing[~mask] = np.nan

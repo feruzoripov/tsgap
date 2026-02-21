@@ -8,10 +8,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="ts_missingness",
     version="0.1.0",
-    author="[YOUR_NAME]",
-    author_email="[YOUR_EMAIL]",
+    author="Feruz Oripov",
+    author_email="foripov@arizona.edu",
     description="Time-series missingness simulation for imputation benchmarking",
-    url="https://github.com/[YOUR_USERNAME]/ts_missingness",
+    url="https://github.com/feruzoripov/ts_missingness",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(),
