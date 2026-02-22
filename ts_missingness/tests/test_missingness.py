@@ -197,11 +197,16 @@ class TestEdgeCases:
             simulate_missingness(X, "invalid", 0.15)
     
     def test_invalid_missing_rate(self):
-        """Should raise error for invalid missing rate."""
+        """Should clip out-of-range missing rates instead of raising."""
         X = np.random.randn(100, 5)
         
-        with pytest.raises(ValueError):
-            simulate_missingness(X, "mcar", 1.5)
+        # Negative rate should be clipped to 0
+        X_missing, mask = simulate_missingness(X, "mcar", -0.5, seed=42)
+        assert mask.all()  # All observed
+        
+        # Rate > 1 should be clipped to 1
+        X_missing, mask = simulate_missingness(X, "mcar", 1.5, seed=42)
+        assert (~mask).all()  # All missing
 
 
 class TestMultiRate:
@@ -246,3 +251,113 @@ class TestOOInterface:
         X_missing, mask = sim.generate(X)
         
         assert X_missing.shape == X.shape
+
+
+class TestValidation:
+    """Test input validation."""
+    
+    def test_invalid_target_dims(self):
+        """Should raise error for out-of-range target dimensions."""
+        X = np.random.randn(100, 5)
+        
+        with pytest.raises(ValueError, match="target dimensions out of range"):
+            simulate_missingness(X, "mcar", 0.15, target=[10])
+        
+        with pytest.raises(ValueError, match="target dimensions out of range"):
+            simulate_missingness(X, "mar", 0.15, driver_dims=[0], target=[-1])
+    
+    def test_invalid_driver_dims(self):
+        """Should raise error for out-of-range driver dimensions."""
+        X = np.random.randn(100, 5)
+        
+        with pytest.raises(ValueError, match="driver_dims out of range"):
+            simulate_missingness(X, "mar", 0.15, driver_dims=[10])
+        
+        with pytest.raises(ValueError, match="driver_dims out of range"):
+            simulate_missingness(X, "mar", 0.15, driver_dims=[-1])
+    
+    def test_zero_missing_rate(self):
+        """Should handle zero missing rate gracefully."""
+        X = np.random.randn(100, 5)
+        
+        X_missing, mask = simulate_missingness(X, "mcar", 0.0, seed=42)
+        assert mask.all()  # All observed
+        
+        X_missing, mask = simulate_missingness(X, "mar", 0.0, seed=42, driver_dims=[0])
+        assert mask.all()  # All observed
+
+
+class TestAdditionalValidation:
+    """Test additional validation and edge cases."""
+    
+    def test_negative_strength(self):
+        """Should raise error for negative strength."""
+        X = np.random.randn(100, 5)
+        
+        with pytest.raises(ValueError, match="strength must be >= 0"):
+            simulate_missingness(X, "mar", 0.15, driver_dims=[0], strength=-1.0)
+        
+        with pytest.raises(ValueError, match="strength must be >= 0"):
+            simulate_missingness(X, "mnar", 0.15, strength=-1.0)
+    
+    def test_missing_rate_clipping(self):
+        """Should clip missing_rate to [0, 1]."""
+        X = np.random.randn(100, 5)
+        
+        # Negative rate should be treated as 0
+        X_missing, mask = simulate_missingness(X, "mcar", -0.1, seed=42)
+        assert mask.all()  # All observed
+        
+        # Rate > 1 should be treated as 1
+        X_missing, mask = simulate_missingness(X, "mcar", 1.5, seed=42)
+        assert (~mask).sum() == mask.size  # All missing
+    
+    def test_mcar_full_missing(self):
+        """MCAR should handle missing_rate=1.0 correctly."""
+        X = np.random.randn(100, 5)
+        
+        X_missing, mask = simulate_missingness(X, "mcar", 1.0, seed=42)
+        assert (~mask).sum() == mask.size  # All missing
+        assert np.isnan(X_missing).all()
+
+
+class TestFinalValidation:
+    """Test final validation enhancements."""
+    
+    def test_invalid_direction(self):
+        """Should raise error for invalid direction."""
+        X = np.random.randn(100, 5)
+        
+        with pytest.raises(ValueError, match="direction must be"):
+            simulate_missingness(
+                X, "mar", 0.15, driver_dims=[0], direction="invalid"
+            )
+    
+    def test_target_as_tuple(self):
+        """Should accept target as tuple."""
+        X = np.random.randn(100, 5)
+        
+        # Should work with tuple
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42, target=(1, 2)
+        )
+        
+        # Only dims 1 and 2 should have missingness
+        assert (~mask[:, 0]).sum() == 0
+        assert (~mask[:, 1]).sum() > 0
+        assert (~mask[:, 2]).sum() > 0
+        assert (~mask[:, 3]).sum() == 0
+    
+    def test_target_as_array(self):
+        """Should accept target as numpy array."""
+        X = np.random.randn(100, 5)
+        
+        # Should work with numpy array
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42, target=np.array([0, 4])
+        )
+        
+        # Only dims 0 and 4 should have missingness
+        assert (~mask[:, 0]).sum() > 0
+        assert (~mask[:, 1]).sum() == 0
+        assert (~mask[:, 4]).sum() > 0

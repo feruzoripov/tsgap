@@ -19,14 +19,27 @@ def _get_eligible_mask(
         Boolean mask of existing NaNs
     target : str or list[int]
         "all" or list of dimension indices to mask
+        (also accepts tuple or numpy array)
     
     Returns
     -------
     eligible : np.ndarray
         Boolean mask (True=eligible for masking)
     """
-    if target == "all":
+    # Check if target is "all" (handle string comparison safely)
+    if isinstance(target, str) and target == "all":
         return ~existing_nans
+    
+    # Convert to list for uniform handling (accepts tuple, array, etc.)
+    target = list(target)
+    
+    # Validate target dimensions
+    n_dims = X.shape[-1]
+    if any(d < 0 or d >= n_dims for d in target):
+        raise ValueError(
+            f"target dimensions out of range. "
+            f"Got {target}, but data has {n_dims} dimensions (0-{n_dims-1})"
+        )
     
     # Mask only specified dimensions
     eligible = np.zeros_like(X, dtype=bool)
@@ -47,17 +60,20 @@ def _calibrate_offset(
 ) -> float:
     """Calibrate offset to achieve target missing rate using binary search.
     
-    Automatically expands bounds if needed.
+    Automatically expands bounds if needed. Guards against bracketing failure.
     
     Assumes compute_rate_fn is monotonically increasing with offset:
     higher offset → higher probability → higher missing rate
+    
+    Note: Caller should handle edge cases (target_rate <= 0 or >= 1) before
+    calling this function.
     
     Parameters
     ----------
     compute_rate_fn : callable
         Function that takes offset and returns achieved rate
     target_rate : float
-        Target missing rate
+        Target missing rate (should be in (0, 1))
     initial_low : float
         Initial lower bound
     initial_high : float
@@ -68,7 +84,7 @@ def _calibrate_offset(
     Returns
     -------
     offset : float
-        Calibrated offset value
+        Calibrated offset value (clamped to [-50, 50] for numerical stability)
     """
     offset_low, offset_high = initial_low, initial_high
     
@@ -77,14 +93,22 @@ def _calibrate_offset(
     rate_high = compute_rate_fn(offset_high)
     
     # If low rate is too HIGH, push offset_low down (decreases rate)
-    while rate_low > target_rate and offset_low > -100:
-        offset_low -= 10
+    while rate_low > target_rate and offset_low > -50:
+        offset_low = max(-50, offset_low - 10)
         rate_low = compute_rate_fn(offset_low)
     
     # If high rate is too LOW, push offset_high up (increases rate)
-    while rate_high < target_rate and offset_high < 100:
-        offset_high += 10
+    while rate_high < target_rate and offset_high < 50:
+        offset_high = min(50, offset_high + 10)
         rate_high = compute_rate_fn(offset_high)
+    
+    # Guard against bracketing failure
+    if rate_low > target_rate and rate_high > target_rate:
+        # Both bounds give rates higher than target → return lowest achievable
+        return np.clip(offset_low, -50, 50)
+    if rate_low < target_rate and rate_high < target_rate:
+        # Both bounds give rates lower than target → return highest achievable
+        return np.clip(offset_high, -50, 50)
     
     # Binary search: rate_low <= target <= rate_high
     for _ in range(max_iterations):
@@ -95,7 +119,8 @@ def _calibrate_offset(
         else:
             offset_high = offset_mid
     
-    return (offset_low + offset_high) / 2
+    # Clamp final offset for numerical stability
+    return np.clip((offset_low + offset_high) / 2, -50, 50)
 
 
 def apply_mcar(
@@ -114,8 +139,9 @@ def apply_mcar(
         Input data
     missing_rate : float
         Target missing rate (applied to eligible non-NaN entries)
+        Will be clipped to [0.0, 1.0]
     existing_nans : np.ndarray
-        Boolean mask of existing NaNs
+        Boolean mask of existing NaNs (should be np.isnan(X) from original data)
     target : str or list[int]
         "all" (default) or list of dimension indices to mask
     rng : np.random.Generator, optional
@@ -129,10 +155,24 @@ def apply_mcar(
     if rng is None:
         rng = np.random.default_rng()
     
+    # Clip missing_rate to valid range
+    missing_rate = float(np.clip(missing_rate, 0.0, 1.0))
+    
     mask = np.ones_like(X, dtype=bool)
+    
+    # Early return for edge cases
+    if missing_rate <= 0:
+        mask[existing_nans] = False
+        return mask
     
     # Get eligible positions
     eligible = _get_eligible_mask(X, existing_nans, target)
+    
+    if missing_rate >= 1:
+        # Mask all eligible positions
+        mask[eligible] = False
+        mask[existing_nans] = False
+        return mask
     
     # Count eligible elements
     n_eligible = eligible.sum()
@@ -178,20 +218,25 @@ def apply_mar(
     
     Missingness depends on driver dimensions (other observed variables).
     
+    Masking probability is defined per time step as a logistic function of
+    a driver variable; masking is then sampled independently across eligible
+    features at each time step.
+    
     Parameters
     ----------
     X : np.ndarray
         Input data
     missing_rate : float
         Target missing rate (applied to eligible entries)
+        Will be clipped to [0.0, 1.0]
     existing_nans : np.ndarray
-        Boolean mask of existing NaNs
+        Boolean mask of existing NaNs (should be np.isnan(X) from original data)
     driver_dims : list[int], optional
         Dimensions that drive missingness (default: first dimension)
     target : str or list[int]
         "all" (default) or list of dimension indices to mask
     strength : float
-        Dependency strength (higher = stronger dependency)
+        Dependency strength (higher = stronger dependency, must be >= 0)
     base_rate : float
         Minimum probability to avoid all-zeros (should be < missing_rate)
     direction : str
@@ -210,8 +255,43 @@ def apply_mar(
     if driver_dims is None:
         driver_dims = [0]
     
-    # Cap base_rate to avoid conflicts with low missing_rate
-    base_rate = min(base_rate, missing_rate * 0.5)
+    # Validate strength
+    if strength < 0:
+        raise ValueError("strength must be >= 0")
+    
+    # Validate direction
+    if direction not in ("positive", "negative"):
+        raise ValueError(
+            f"direction must be 'positive' or 'negative', got '{direction}'"
+        )
+    
+    # Clip missing_rate to valid range
+    missing_rate = float(np.clip(missing_rate, 0.0, 1.0))
+    
+    # Validate driver dimensions
+    n_dims = X.shape[-1]
+    if any(d < 0 or d >= n_dims for d in driver_dims):
+        raise ValueError(
+            f"driver_dims out of range. "
+            f"Got {driver_dims}, but data has {n_dims} dimensions (0-{n_dims-1})"
+        )
+    
+    # Early return for edge cases
+    if missing_rate <= 0:
+        mask = np.ones_like(X, dtype=bool)
+        mask[existing_nans] = False
+        return mask
+    
+    if missing_rate >= 1:
+        # Mask all eligible positions
+        mask = np.zeros_like(X, dtype=bool)
+        eligible = _get_eligible_mask(X, existing_nans, target)
+        mask[~eligible] = True  # Keep non-eligible as observed
+        mask[existing_nans] = False  # Mark existing NaNs as missing
+        return mask
+    
+    # Cap base_rate to avoid conflicts (must be < missing_rate)
+    base_rate = min(base_rate, max(1e-6, 0.5 * missing_rate))
     
     mask = np.ones_like(X, dtype=bool)
     
@@ -248,7 +328,9 @@ def apply_mar(
     
     # Calibrate to achieve target missing rate over eligible positions
     def compute_rate(offset):
-        probs = 1 / (1 + np.exp(-(strength * driver_norm + offset)))
+        # Clip logits for numerical stability
+        logits = np.clip(strength * driver_norm + offset, -50, 50)
+        probs = 1 / (1 + np.exp(-logits))
         probs = np.maximum(probs, base_rate)
         probs_full = np.broadcast_to(probs, X.shape).copy()
         probs_full[~eligible] = 0  # Only consider eligible positions
@@ -256,8 +338,9 @@ def apply_mar(
     
     offset = _calibrate_offset(compute_rate, missing_rate)
     
-    # Compute final probabilities
-    probs = 1 / (1 + np.exp(-(strength * driver_norm + offset)))
+    # Compute final probabilities with numerical stability
+    logits = np.clip(strength * driver_norm + offset, -50, 50)
+    probs = 1 / (1 + np.exp(-logits))
     probs = np.maximum(probs, base_rate)
     probs_full = np.broadcast_to(probs, X.shape).copy()
     probs_full[~eligible] = 0  # Zero out non-eligible before sampling
@@ -290,15 +373,16 @@ def apply_mnar(
         Input data
     missing_rate : float
         Target missing rate (applied to eligible entries)
+        Will be clipped to [0.0, 1.0]
     existing_nans : np.ndarray
-        Boolean mask of existing NaNs
+        Boolean mask of existing NaNs (should be np.isnan(X) from original data)
     mnar_mode : str
         "high" (high values missing), "low" (low values missing),
         or "extreme" (extreme values missing)
     target : str or list[int]
         "all" (default) or list of dimension indices to mask
     strength : float
-        Dependency strength
+        Dependency strength (must be >= 0)
     rng : np.random.Generator, optional
         Random number generator for reproducibility
     
@@ -309,6 +393,27 @@ def apply_mnar(
     """
     if rng is None:
         rng = np.random.default_rng()
+    
+    # Validate strength
+    if strength < 0:
+        raise ValueError("strength must be >= 0")
+    
+    # Clip missing_rate to valid range
+    missing_rate = float(np.clip(missing_rate, 0.0, 1.0))
+    
+    # Early return for edge cases
+    if missing_rate <= 0:
+        mask = np.ones_like(X, dtype=bool)
+        mask[existing_nans] = False
+        return mask
+    
+    if missing_rate >= 1:
+        # Mask all eligible positions
+        mask = np.zeros_like(X, dtype=bool)
+        eligible = _get_eligible_mask(X, existing_nans, target)
+        mask[~eligible] = True  # Keep non-eligible as observed
+        mask[existing_nans] = False  # Mark existing NaNs as missing
+        return mask
     
     mask = np.ones_like(X, dtype=bool)
     
@@ -349,14 +454,17 @@ def apply_mnar(
     
     # Calibrate to achieve target missing rate over eligible positions
     def compute_rate(offset):
-        probs = 1 / (1 + np.exp(-(strength * score + offset)))
+        # Clip logits for numerical stability
+        logits = np.clip(strength * score + offset, -50, 50)
+        probs = 1 / (1 + np.exp(-logits))
         probs[~eligible] = 0  # Only consider eligible positions
         return probs[eligible].mean()  # Rate over eligible only
     
     offset = _calibrate_offset(compute_rate, missing_rate)
     
-    # Compute final probabilities
-    probs = 1 / (1 + np.exp(-(strength * score + offset)))
+    # Compute final probabilities with numerical stability
+    logits = np.clip(strength * score + offset, -50, 50)
+    probs = 1 / (1 + np.exp(-logits))
     probs[~eligible] = 0  # Zero out non-eligible before sampling
     
     # Sample missingness
@@ -365,3 +473,11 @@ def apply_mnar(
     mask[existing_nans] = False  # Mark existing NaNs as missing
     
     return mask
+
+
+# Mechanism registry for easy dispatch
+MECHANISMS = {
+    "mcar": apply_mcar,
+    "mar": apply_mar,
+    "mnar": apply_mnar,
+}

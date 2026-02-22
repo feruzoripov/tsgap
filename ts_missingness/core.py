@@ -2,7 +2,7 @@
 
 import numpy as np
 from typing import Tuple, Dict, List, Optional, Union, Any
-from .mechanisms import apply_mcar, apply_mar, apply_mnar
+from .mechanisms import MECHANISMS
 from .blocks import apply_block_missingness
 
 
@@ -76,12 +76,16 @@ def simulate_missingness(
         raise TypeError("X must be a numpy array")
     if X.ndim not in [2, 3]:
         raise ValueError("X must be 2D (T, D) or 3D (N, T, D)")
-    if not 0.0 <= missing_rate <= 1.0:
-        raise ValueError("missing_rate must be between 0.0 and 1.0")
+    
+    # Clip missing_rate to valid range (allow out-of-range for convenience)
+    missing_rate = float(np.clip(missing_rate, 0.0, 1.0))
     
     mechanism = mechanism.lower()
-    if mechanism not in ["mcar", "mar", "mnar"]:
-        raise ValueError(f"Unknown mechanism: {mechanism}")
+    if mechanism not in MECHANISMS:
+        raise ValueError(
+            f"Unknown mechanism: {mechanism}. "
+            f"Must be one of: {list(MECHANISMS.keys())}"
+        )
     
     # Copy input
     X_missing = X.copy()
@@ -89,13 +93,8 @@ def simulate_missingness(
     # Identify existing NaNs
     existing_nans = np.isnan(X)
     
-    # Generate mechanism-specific mask
-    if mechanism == "mcar":
-        mask = apply_mcar(X, missing_rate, existing_nans, rng=rng, **kwargs)
-    elif mechanism == "mar":
-        mask = apply_mar(X, missing_rate, existing_nans, rng=rng, **kwargs)
-    elif mechanism == "mnar":
-        mask = apply_mnar(X, missing_rate, existing_nans, rng=rng, **kwargs)
+    # Generate mechanism-specific mask using registry
+    mask = MECHANISMS[mechanism](X, missing_rate, existing_nans, rng=rng, **kwargs)
     
     # Apply block missingness if requested
     if kwargs.get("block", False):
