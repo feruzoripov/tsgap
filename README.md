@@ -1,129 +1,56 @@
 # Time-Series Missingness Simulation Library
 
-A Python library for simulating realistic missingness patterns in time-series data for imputation benchmarking.
+A reproducible Python framework for simulating realistic missingness patterns in time-series data for imputation benchmarking and evaluation.
 
-## Features
+This library implements statistically grounded missingness mechanisms—**MCAR**, **MAR**, and **MNAR**—with precise or calibrated missing-rate control, support for multivariate and multi-subject time series, optional block (contiguous) dropout, and full reproducibility via seeded random generators.
 
-- Three standard missingness mechanisms: MCAR, MAR, MNAR
-- Block (contiguous) missingness patterns for realistic sensor dropout
-- Support for 2D (T, D) and 3D (N, T, D) arrays
-- Exact missing rate control for MCAR, approximate for MAR/MNAR
-- Reproducible with seed control
-- Handles existing NaNs and edge cases
-
-## Missingness Mechanisms
-
-### MCAR (Missing Completely At Random)
-
-**Definition**: Missingness is independent of both observed and unobserved data.
-
-**Mathematical formulation**:
-```
-P(M_ij = 1) = ρ    for all i,j
-```
-where M_ij is the missingness indicator and ρ is the target missing rate.
-
-**Implementation**:
-- Uniform random sampling without replacement
-- Exactly ⌊n × ρ⌋ positions are masked from n eligible entries
-- Each eligible position has equal probability of being selected
-
-**Use case**: Random sensor failures, data transmission errors
+It is designed for **research-grade evaluation of imputation models**, especially in healthcare and sensor data settings where missingness is structured, correlated, and non-random.
 
 ---
 
-### MAR (Missing At Random)
+## Why this library?
 
-**Definition**: Missingness depends on observed data, but not on the missing values themselves.
+Most imputation benchmarks rely on simplistic random masking that does not reflect real-world data collection processes. In practice:
 
-**Mathematical formulation**:
-```
-P(M_ij = 1 | X) = σ(α · z_i + β)
+- Sensors fail during activity
+- Devices drop out for contiguous time windows
+- Extreme values are more likely to be missing
+- Missingness is correlated with other variables
 
-where:
-  z_i = (X_i,driver - μ) / σ     [normalized driver signal]
-  σ(x) = 1 / (1 + exp(-x))       [sigmoid function]
-  α = strength parameter
-  β = calibrated offset
-```
-
-**Implementation**:
-1. Compute driver signal from specified dimensions (e.g., activity level)
-2. Normalize: z = (driver - mean) / std
-3. Apply sigmoid to get missingness probability
-4. Calibrate offset β via binary search to achieve target rate ρ
-5. Sample Bernoulli(p_ij) for each position
-
-**Use case**: Sensor failures correlated with other measurements (e.g., heart rate sensor fails during high activity)
+This library provides a **unified, configurable, and reproducible** framework to simulate these patterns while preserving a known ground truth for fair model comparison.
 
 ---
 
-### MNAR (Missing Not At Random)
+## Key Features
 
-**Definition**: Missingness depends on the unobserved (missing) values themselves.
-
-**Mathematical formulation**:
-```
-P(M_ij = 1 | X_ij) = σ(α · f(z_ij) + β)
-
-where:
-  z_ij = (X_ij - μ_j) / σ_j      [per-dimension normalization]
-  
-  f(z) = { z      if mode = "high"     [high values missing]
-         { -z     if mode = "low"      [low values missing]
-         { |z|    if mode = "extreme"  [extreme values missing]
-  
-  σ(x) = 1 / (1 + exp(-x))       [sigmoid function]
-  α = strength parameter
-  β = calibrated offset
-```
-
-**Implementation**:
-1. Normalize each dimension independently: z_ij = (X_ij - μ_j) / σ_j
-2. Compute score based on mode (high/low/extreme)
-3. Apply sigmoid to get missingness probability
-4. Calibrate offset β to achieve target rate ρ
-5. Sample Bernoulli(p_ij) for each position
-
-**Use case**: 
-- **Extreme**: Sensor saturation at extreme values
-- **High**: Ceiling effect (values above detection limit)
-- **Low**: Floor effect (values below detection limit)
+- Three standard missingness mechanisms: **MCAR**, **MAR**, **MNAR**
+- Optional **block (contiguous) missingness** to simulate sensor dropout
+- Supports both:
+  - 2D arrays: `(T, D)` (time × features)
+  - 3D arrays: `(N, T, D)` (subjects × time × features)
+- **Exact** missing-rate control for MCAR  
+- **Calibrated** missing-rate control for MAR/MNAR via binary search
+- Fully **reproducible** using NumPy’s `Generator` API
+- Respects **existing NaNs** in the data
+- Returns both:
+  - `X_missing` (with NaNs inserted)
+  - `mask` (`True = observed`, `False = missing`)
 
 ---
 
-### Block Missingness (Optional)
+## Mask Convention
 
-**Definition**: Contiguous segments of missing data, simulating sensor dropout periods.
+- `mask == True` → observed value  
+- `mask == False` → missing value  
 
-**Mathematical formulation**:
+This allows direct evaluation using:
+
+```python
+missing_idx = ~mask
+error = np.mean((X[missing_idx] - X_imputed[missing_idx])**2)
 ```
-Given initial missingness M, create blocks:
-  1. n_block = ⌊n_missing × density⌋
-  2. Restore (n_missing - n_block) random points
-  3. Add contiguous blocks of length L until n_block points masked
-```
-
-**Implementation**:
-- Works with any base mechanism (MCAR/MAR/MNAR)
-- `block_density`: fraction of missingness in contiguous blocks
-- `block_len`: length of each missing segment
-
-**Use case**: Sensor battery depletion, connectivity loss, device removal
 
 ---
-
-## Key Parameters Summary
-
-| Parameter | MCAR | MAR | MNAR | Description |
-|-----------|------|-----|------|-------------|
-| `missing_rate` | ✓ | ✓ | ✓ | Target fraction of missing values (0.0-1.0) |
-| `target` | ✓ | ✓ | ✓ | Dimensions to mask: "all" or list of indices |
-| `driver_dims` | - | ✓ | - | Dimensions that drive missingness |
-| `mnar_mode` | - | - | ✓ | "high", "low", or "extreme" |
-| `strength` | - | ✓ | ✓ | Dependency strength (α in formulas) |
-| `block` | ✓ | ✓ | ✓ | Enable block missingness |
-| `seed` | ✓ | ✓ | ✓ | Random seed for reproducibility |
 
 ## Installation
 
@@ -131,113 +58,192 @@ Given initial missingness M, create blocks:
 pip install -e .
 ```
 
-## Quick Start
+---
+
+## One-Minute Example
 
 ```python
 import numpy as np
 from ts_missingness import simulate_missingness
 
-# Generate sample data
-X = np.random.randn(100, 5)  # 100 timesteps, 5 dimensions
+X = np.random.randn(1000, 6)
 
-# MCAR: 15% missing completely at random
-X_missing, mask = simulate_missingness(X, "mcar", missing_rate=0.15, seed=42)
+X_miss, mask = simulate_missingness(
+    X, mechanism="mar", missing_rate=0.2, seed=42, driver_dims=[0]
+)
 
-# MAR: 25% missing depending on dimension 0
-X_missing, mask = simulate_missingness(
-    X, "mar", missing_rate=0.25, seed=42,
-    driver_dims=[0], strength=2.0
+print("Actual missing rate:", (~mask).mean())
+```
+
+---
+
+## Missingness Mechanisms
+
+### 1) MCAR — Missing Completely At Random
+
+**Definition**  
+Missingness is independent of both observed and unobserved data.
+
+**Mathematical model**
+```
+P(M_ij = 1) = ρ
+```
+
+**Implementation**
+- Uniform random sampling without replacement
+- Exactly ⌊n × ρ⌋ positions are masked among eligible entries
+- Guarantees precise missing-rate control
+
+**Use cases**
+- Random packet loss
+- Uncorrelated sensor glitches
+- Transmission errors
+
+---
+
+### 2) MAR — Missing At Random
+
+**Definition**  
+Missingness depends on **observed variables**, but **not** on the missing value itself.
+
+**Model**
+```
+P(M_ij = 1 | X) = σ(α · z_i + β)
+
+z_i = (driver_i - μ) / σ
+σ(x) = 1 / (1 + exp(-x))
+```
+
+**Procedure**
+1. Compute a driver signal from specified dimensions
+2. Normalize the driver
+3. Convert to probabilities using a sigmoid
+4. Calibrate offset β via binary search to match target missing rate ρ
+5. Sample Bernoulli(p_ij) at eligible positions
+
+**Use cases**
+- Sensor failure during high activity
+- Dropout correlated with physiological state
+- Context-dependent data loss
+
+---
+
+### 3) MNAR — Missing Not At Random
+
+**Definition**  
+Missingness depends on the **value itself** (unobserved when missing). This is the most challenging and least identifiable setting.
+
+**Model**
+```
+P(M_ij = 1 | X_ij) = σ(α · f(z_ij) + β)
+
+z_ij = (X_ij - μ_j) / σ_j
+
+f(z) =  z     (mode="high")
+       -z     (mode="low")
+       |z|    (mode="extreme")
+```
+
+**Procedure**
+1. Normalize each dimension independently
+2. Compute score based on mode
+3. Apply sigmoid to obtain probabilities
+4. Calibrate offset β to achieve target missing rate
+5. Sample Bernoulli(p_ij)
+
+**Use cases**
+- Sensor saturation at extremes
+- Ceiling/floor effects
+- Detection limits
+
+---
+
+## Block Missingness (Optional)
+
+**Purpose**  
+Simulates **contiguous dropout periods**, common in real sensor data.
+
+**Behavior**
+- Applied as a **post-processing step** on top of MCAR/MAR/MNAR
+- Preserves global missing rate
+- Increases temporal correlation of missingness
+
+**Parameters**
+- `block=True`
+- `block_len`: length of each missing segment
+- `block_density`: fraction of missingness placed into blocks
+
+**Use cases**
+- Battery depletion
+- Device removal
+- Connectivity loss
+
+---
+
+## Quick Start
+
+```python
+# MCAR: 15% random missing
+X_miss, mask = simulate_missingness(X, "mcar", missing_rate=0.15, seed=42)
+
+# MAR: 25% missing driven by dimension 0
+X_miss, mask = simulate_missingness(
+    X, "mar", missing_rate=0.25, seed=42, driver_dims=[0], strength=2.0
 )
 
 # MNAR: 10% extreme values missing
-X_missing, mask = simulate_missingness(
-    X, "mnar", missing_rate=0.10, seed=42,
-    mnar_mode="extreme", strength=2.0
+X_miss, mask = simulate_missingness(
+    X, "mnar", missing_rate=0.10, seed=42, mnar_mode="extreme", strength=2.0
 )
 
-# Block missingness: 60-timestep blocks
-X_missing, mask = simulate_missingness(
-    X, "mcar", missing_rate=0.20, seed=42,
-    block=True, block_len=60, block_density=0.7
+# Block missingness
+X_miss, mask = simulate_missingness(
+    X, "mcar", missing_rate=0.20, seed=42, block=True, block_len=60, block_density=0.7
 )
 ```
 
-## Usage Examples
+---
 
-### Multiple Missing Rates
-
-```python
-from ts_missingness import simulate_many_rates
-
-rates = [0.05, 0.15, 0.25]
-results = simulate_many_rates(X, "mcar", rates, seed=42)
-
-for rate, (X_missing, mask) in results.items():
-    print(f"Rate {rate}: {(~mask).sum()} missing values")
-```
-
-### Object-Oriented Interface
+## Evaluation Example
 
 ```python
-from ts_missingness import MissingnessSimulator
+X_miss, mask = simulate_missingness(X, "mcar", 0.20, seed=42)
 
-sim = MissingnessSimulator("mcar", missing_rate=0.15, seed=42)
-X_missing, mask = sim.generate(X)
-```
+X_imputed = your_imputation_method(X_miss)
 
-### Evaluation for Imputation
-
-```python
-# Simulate missingness
-X_missing, mask = simulate_missingness(X, "mcar", 0.20, seed=42)
-
-# Your imputation method
-X_imputed = your_imputation_method(X_missing)
-
-# Compute metrics only on masked entries
-missing_indices = ~mask
-rmse = np.sqrt(np.mean((X[missing_indices] - X_imputed[missing_indices])**2))
-mae = np.mean(np.abs(X[missing_indices] - X_imputed[missing_indices]))
+missing_idx = ~mask
+rmse = np.sqrt(np.mean((X[missing_idx] - X_imputed[missing_idx])**2))
+mae = np.mean(np.abs(X[missing_idx] - X_imputed[missing_idx]))
 
 print(f"RMSE: {rmse:.4f}, MAE: {mae:.4f}")
 ```
 
-## API Reference
+---
+
+## API
 
 ### `simulate_missingness(X, mechanism, missing_rate, seed=None, **kwargs)`
 
-Main function to simulate missingness.
+**Parameters**
+- `X`: array of shape `(T, D)` or `(N, T, D)`
+- `mechanism`: `"mcar"`, `"mar"`, `"mnar"`
+- `missing_rate`: float in `[0, 1]`
+- `seed`: optional int
+- `**kwargs`: mechanism-specific options
 
-Parameters:
-- `X`: numpy array of shape (T, D) or (N, T, D)
-- `mechanism`: "mcar", "mar", or "mnar"
-- `missing_rate`: float between 0.0 and 1.0
-- `seed`: optional random seed
-- `**kwargs`: mechanism-specific parameters
-
-Returns:
+**Returns**
 - `X_missing`: array with NaNs inserted
-- `mask`: boolean array (True=observed, False=missing)
+- `mask`: boolean array (`True = observed`, `False = missing`)
 
-### Mechanism-Specific Parameters
+---
 
-MCAR:
-- `target`: "all" (default) or list of dimension indices to mask
+## Reproducibility
 
-MAR:
-- `driver_dims`: list of dimensions that drive missingness (required)
-- `strength`: dependency strength (default: 2.0)
-- `base_rate`: minimum probability (default: 0.01)
-- `direction`: "positive" or "negative" (default: "positive")
+- Uses NumPy’s `Generator` API
+- No reliance on global RNG state
+- Same seed → identical masks
 
-MNAR:
-- `mnar_mode`: "high", "low", or "extreme" (default: "extreme")
-- `strength`: dependency strength (default: 2.0)
-
-Block Missingness (all mechanisms):
-- `block`: enable block patterns (default: False)
-- `block_len`: length of each block in timesteps (default: 10)
-- `block_density`: fraction of missingness in blocks (default: 0.7)
+---
 
 ## Testing
 
@@ -245,9 +251,9 @@ Block Missingness (all mechanisms):
 pytest ts_missingness/tests/
 ```
 
-## Citation
+---
 
-If you use this library in your research, please cite:
+## Citation
 
 ```bibtex
 @software{ts_missingness,
@@ -257,6 +263,8 @@ If you use this library in your research, please cite:
   url = {https://github.com/feruzoripov/ts_missingness}
 }
 ```
+
+---
 
 ## License
 
