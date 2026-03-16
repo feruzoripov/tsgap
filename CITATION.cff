@@ -4,18 +4,7 @@ authors:
   - family-names: "Oripov"
     given-names: "Feruz"
     orcid: "https://orcid.org/0009-0001-4303-0512"
-title: "ts_missingness: A Python Library for Composable Time-Series Missingness Simulation"
+title: "Time-Series Missingness Simulation Library"
 version: 0.2.0
 date-released: 2026-02-21
 url: "https://github.com/feruzoripov/ts_missingness"
-license: MIT
-repository-code: "https://github.com/feruzoripov/ts_missingness"
-keywords:
-  - time series
-  - missing data
-  - imputation
-  - benchmarking
-  - simulation
-  - MCAR
-  - MAR
-  - MNAR
