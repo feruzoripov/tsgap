@@ -4,6 +4,16 @@ A Python library for simulating realistic missingness in time-series data for im
 
 Explicitly separates **mechanisms** (why data is missing: MCAR, MAR, MNAR) from **patterns** (how data is missing: pointwise, block, monotone, decay, markov). Any mechanism can be combined with any pattern. Supports 2D and 3D arrays, exact or calibrated rate control, weighted multi-driver MAR, and full reproducibility.
 
+![Complete data (left) vs. five mechanism+pattern combinations at 20% missing rate.](assets/before_after.png)
+
+Each panel shows a (200 timesteps × 8 features) array as a heatmap. The color scale represents data values: yellow = low values, green = mid-range values, blue = high values. Red cells are missing values overlaid on top of the data. The first panel shows the complete dataset with no missingness. The remaining five panels each apply a different mechanism+pattern combination at 20% missing rate, so you can see exactly how each configuration removes data:
+
+- MCAR + Pointwise: red cells scattered uniformly at random across the entire array.
+- MAR + Block: red cells appear in contiguous horizontal bands, concentrated in regions where the driver variable (dim 0, which ramps up over time) has high values.
+- MNAR + Monotone: each feature column has a clean cutoff point — everything after the dropout time is solid red, modeling permanent sensor failure.
+- MCAR + Decay: red cells are sparse at the top (early timesteps) and dense at the bottom (late timesteps), modeling gradual sensor degradation.
+- MAR + Markov: bursty red streaks that flicker on and off along the time axis, with burst locations influenced by the driver variable.
+
 ---
 
 ## Installation
@@ -91,6 +101,10 @@ Any mechanism can be combined with any pattern:
 | MNAR + pointwise | Sensor saturates at extreme values |
 | MCAR + markov | Random intermittent connectivity drops |
 | MAR + markov | Load-dependent flickering sensor |
+
+![3×5 grid showing all mechanism × pattern combinations at 20% missing rate. Blue = missing, white = observed.](assets/mechanism_pattern_grid.png)
+
+The grid above shows all 15 possible mechanism × pattern combinations. Each cell is a (200 × 8) missingness mask where blue cells are missing and white cells are observed. Rows vary the mechanism (MCAR, MAR, MNAR) and columns vary the pattern (pointwise, block, monotone, decay, markov). The percentage in each cell's corner is the actual achieved missing rate. Notice how MCAR rows look uniform across features, MAR rows concentrate missingness where the driver is high, and MNAR rows target extreme data values — while the column patterns independently control the temporal shape.
 
 ---
 
