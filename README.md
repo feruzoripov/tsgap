@@ -124,13 +124,35 @@ rmse = np.sqrt(np.mean((X[missing_idx] - X_imputed[missing_idx]) ** 2))
 
 ---
 
+## Mathematical Background: The Sigmoid Function
+
+Several mechanisms and patterns in this library use the sigmoid (logistic) function to convert raw scores into probabilities. Since it appears repeatedly, we define it once here:
+
+$$\sigma(x) = \frac{1}{1 + e^{-x}}$$
+
+The sigmoid takes any real number $x$ and maps it to a value between 0 and 1. When $x = 0$, the output is 0.5. As $x$ grows large and positive, the output approaches 1. As $x$ grows large and negative, the output approaches 0. This makes it ideal for converting scores into probabilities.
+
+---
+
 ## Mechanisms
 
 ### MCAR — Missing Completely At Random
 
-Missingness is independent of all data. Uses uniform sampling without replacement for exact rate control.
+Missingness is independent of all data — every eligible position has the same probability of being missing, regardless of its value or the values of other variables.
 
 $$P(M_{ij} = 1) = \rho$$
+
+Variable definitions:
+- $M_{ij}$ — the missingness indicator for position $(i, j)$, where $i$ is the timestep and $j$ is the feature dimension. $M_{ij} = 1$ means the value is missing; $M_{ij} = 0$ means it is observed.
+- $\rho$ — the target missing rate, a number between 0 and 1 (e.g., 0.15 means 15% missing). This is the `missing_rate` parameter.
+
+Step-by-step procedure:
+1. Count the number of eligible positions $n_{\text{eligible}}$ (all non-NaN entries in the target dimensions).
+2. Compute the number of positions to mask: $n_{\text{mask}} = \text{round}(n_{\text{eligible}} \times \rho)$.
+3. Randomly sample exactly $n_{\text{mask}}$ positions uniformly without replacement.
+4. Set those positions to missing.
+
+Because MCAR uses sampling without replacement, the achieved missing rate is exact (not approximate).
 
 ```python
 X_miss, mask = simulate_missingness(X, "mcar", 0.15, seed=42)
@@ -143,17 +165,49 @@ X_miss, mask = simulate_missingness(X, "mcar", 0.15, seed=42)
 
 ### MAR — Missing At Random
 
-Missingness depends on observed driver variables via a logistic model. The offset is automatically calibrated via binary search to match the target rate.
+Missingness depends on other observed variables (called "drivers") but not on the missing value itself. For example, a heart rate sensor might fail more often during high physical activity — the activity level (observed) drives the missingness of heart rate.
 
-$$P(M_{ij} = 1 \mid X) = \sigma\!\left(\alpha \cdot z_i + \beta\right)$$
+The probability of each position being missing is computed using a logistic model:
 
-where $z_i$ is the normalized driver signal, $\alpha$ is the strength, and $\beta$ is the calibrated offset.
+$$P(M_{ij} = 1 \mid X) = \sigma(\alpha \cdot z_i + \beta)$$
 
-When multiple drivers are specified, the driver signal is a weighted linear combination:
+Variable definitions:
+- $M_{ij}$ — missingness indicator for timestep $i$, feature $j$. Equals 1 if missing, 0 if observed.
+- $X$ — the full input data matrix.
+- $z_i$ — the normalized driver signal at timestep $i$ (see below). This is a single number summarizing the driver variables at that timestep.
+- $\alpha$ — the strength parameter (`strength`). Controls how strongly the driver influences missingness. Higher $\alpha$ means the driver has more influence. Must be $\geq 0$.
+- $\beta$ — the calibrated offset. This is automatically computed by the library (via binary search) so that the overall missing rate matches the target $\rho$. You do not set this directly.
+- $\sigma(\cdot)$ — the sigmoid function defined above.
 
-$$z_i = \sum_k w_k \cdot \frac{X_{i,k} - \mu_k}{\sigma_k}$$
+Computing the driver signal $z_i$:
 
-where $w_k$ are the normalized `driver_weights`. If omitted, all drivers contribute equally (simple mean).
+When a single driver dimension $k$ is used:
+
+$$z_i = \frac{X_{i,k} - \mu_k}{\sigma_k}$$
+
+where:
+- $X_{i,k}$ — the raw value of driver dimension $k$ at timestep $i$.
+- $\mu_k$ — the mean of dimension $k$ across all timesteps.
+- $\sigma_k$ — the standard deviation of dimension $k$ across all timesteps.
+
+This normalization (z-scoring) ensures the driver signal has mean 0 and standard deviation 1, so the strength parameter $\alpha$ has a consistent effect regardless of the driver's original scale.
+
+When multiple driver dimensions are used with weights:
+
+$$z_i = \sum_{k} w_k \cdot \frac{X_{i,k} - \mu_k}{\sigma_k}$$
+
+where:
+- $w_k$ — the weight for driver dimension $k$ (`driver_weights`). Weights are automatically normalized to sum to 1. If not specified, all drivers contribute equally (simple mean).
+
+Step-by-step procedure:
+1. Extract the driver dimensions from the data and compute the weighted, normalized driver signal $z_i$ for each timestep.
+2. If `direction="negative"`, flip the sign: $z_i \leftarrow -z_i$.
+3. For a candidate offset $\beta$, compute probabilities: $p_{ij} = \sigma(\alpha \cdot z_i + \beta)$.
+4. Ensure a minimum probability floor: $p_{ij} = \max(p_{ij}, p_{\text{base}})$, where $p_{\text{base}}$ is the `base_rate` parameter.
+5. Calibrate $\beta$ via binary search: find the value of $\beta$ such that the average probability over all eligible positions equals the target rate $\rho$.
+6. Sample missingness: for each eligible position, draw a random number $u_{ij} \sim \text{Uniform}(0, 1)$. If $u_{ij} < p_{ij}$, the position is missing.
+
+Because MAR uses Bernoulli sampling (each position is an independent coin flip), the achieved rate is approximate — it fluctuates around the target, especially for small datasets. For large datasets, the law of large numbers ensures convergence.
 
 ```python
 # Single driver
@@ -173,25 +227,53 @@ X_miss, mask = simulate_missingness(
 - `driver_dims`: list of dimension indices that drive missingness (default: `[0]`)
 - `driver_weights`: weights for each driver (auto-normalized, default: equal)
 - `target`: `"all"` or list of dimension indices to mask
-- `strength`: dependency strength, ≥ 0 (default: `2.0`)
-- `base_rate`: minimum probability floor (default: `0.01`)
-- `direction`: `"positive"` (high driver → high missing) or `"negative"`
+- `strength`: dependency strength $\alpha$, $\geq 0$ (default: `2.0`)
+- `base_rate`: minimum probability floor $p_{\text{base}}$ (default: `0.01`)
+- `direction`: `"positive"` (high driver $\rightarrow$ high missing) or `"negative"` (high driver $\rightarrow$ low missing)
 
 ---
 
 ### MNAR — Missing Not At Random
 
-Missingness depends on the value itself. Three modes control which values are more likely to be missing:
+Missingness depends on the value itself — the very value that would be missing is what determines whether it goes missing. For example, a temperature sensor might saturate and fail to record extreme readings, or a medical device might have a detection limit that causes very low values to be unrecorded.
 
-$$P(M_{ij} = 1 \mid X_{ij}) = \sigma\!\left(\alpha \cdot f(z_{ij}) + \beta\right)$$
+$$P(M_{ij} = 1 \mid X_{ij}) = \sigma(\alpha \cdot f(z_{ij}) + \beta)$$
 
-where $f(z)$ depends on the mode:
+Variable definitions:
+- $M_{ij}$ — missingness indicator for timestep $i$, feature $j$.
+- $X_{ij}$ — the actual data value at position $(i, j)$. This is the value that influences its own missingness.
+- $z_{ij}$ — the z-scored (normalized) value at position $(i, j)$, computed per feature dimension.
+- $f(\cdot)$ — the score function that determines which values are more likely to be missing (depends on `mnar_mode`, see table below).
+- $\alpha$ — the strength parameter (`strength`). Controls how strongly the value influences its own missingness.
+- $\beta$ — the calibrated offset, automatically computed via binary search to match the target rate $\rho$.
+- $\sigma(\cdot)$ — the sigmoid function.
 
-| Mode | $f(z)$ | Interpretation |
-|------|--------|----------------|
-| `"high"` | $z$ | High values more likely missing |
-| `"low"` | $-z$ | Low values more likely missing |
-| `"extreme"` | $\|z\|$ | Extreme values (both tails) more likely missing |
+Computing the normalized value $z_{ij}$:
+
+$$z_{ij} = \frac{X_{ij} - \mu_j}{\sigma_j}$$
+
+where:
+- $\mu_j$ — the mean of feature $j$ across all timesteps.
+- $\sigma_j$ — the standard deviation of feature $j$ across all timesteps.
+
+Each feature is normalized independently, so a "high" value in one feature is comparable to a "high" value in another, regardless of their original scales.
+
+The score function $f(z)$ determines which values are targeted:
+
+| Mode | $f(z)$ | Effect | Example |
+|------|--------|--------|---------|
+| `"high"` | $z$ | Higher values $\rightarrow$ higher probability of missing | Sensor ceiling effect |
+| `"low"` | $-z$ | Lower values $\rightarrow$ higher probability of missing | Detection limit |
+| `"extreme"` | $\|z\|$ | Values far from the mean (in either direction) $\rightarrow$ higher probability of missing | Sensor saturation at both extremes |
+
+Step-by-step procedure:
+1. Normalize each feature independently: $z_{ij} = (X_{ij} - \mu_j) / \sigma_j$.
+2. Compute the score: $s_{ij} = f(z_{ij})$ based on the chosen mode.
+3. For a candidate offset $\beta$, compute probabilities: $p_{ij} = \sigma(\alpha \cdot s_{ij} + \beta)$.
+4. Calibrate $\beta$ via binary search so the average probability over eligible positions equals $\rho$.
+5. Sample missingness: for each eligible position, draw $u_{ij} \sim \text{Uniform}(0, 1)$. If $u_{ij} < p_{ij}$, the position is missing.
+
+Like MAR, the achieved rate is approximate due to Bernoulli sampling.
 
 ```python
 X_miss, mask = simulate_missingness(
@@ -203,7 +285,7 @@ X_miss, mask = simulate_missingness(
 **Parameters:**
 - `mnar_mode`: `"extreme"` (default), `"high"`, or `"low"`
 - `target`: `"all"` or list of dimension indices to mask
-- `strength`: dependency strength, ≥ 0 (default: `2.0`)
+- `strength`: dependency strength $\alpha$, $\geq 0$ (default: `2.0`)
 
 ---
 
@@ -263,11 +345,29 @@ for d in range(X.shape[1]):
 
 ### Temporal Decay
 
-Missingness probability increases over time via a sigmoid ramp, modeling sensor degradation, battery drain, or participant fatigue. Early timesteps have low missingness; later timesteps have high missingness.
+Missingness probability increases over time, modeling sensor degradation, battery drain, or participant fatigue. Early timesteps have low missingness; later timesteps have high missingness.
 
-$$w(t) = \sigma\!\left(\gamma \cdot (t_{\text{norm}} - c)\right)$$
+The time-weight for each timestep is computed using a sigmoid ramp:
 
-where $\gamma$ is `decay_rate`, $c$ is `decay_center`, and $t_{\text{norm}} \in [0, 1]$.
+$$w(t) = \sigma(\gamma \cdot (t_{\text{norm}} - c))$$
+
+Variable definitions:
+- $w(t)$ — the sampling weight for timestep $t$. Higher weight means higher probability of being selected as missing.
+- $t_{\text{norm}}$ — the normalized time position, linearly spaced from 0 (first timestep) to 1 (last timestep). For a series of length $T$, timestep $i$ has $t_{\text{norm}} = i / (T - 1)$.
+- $\gamma$ — the decay rate (`decay_rate`). Controls the steepness of the transition from low to high missingness. Higher values create a sharper step-like transition; lower values create a gradual ramp.
+- $c$ — the decay center (`decay_center`). The normalized time position where the weight reaches 50% (i.e., $w = 0.5$). A value of 0.7 means the transition happens at 70% of the way through the series.
+- $\sigma(\cdot)$ — the sigmoid function defined in the Mathematical Background section above.
+
+A minimum weight of 0.01 is applied so that early timesteps are not completely immune to missingness.
+
+Step-by-step procedure:
+1. The mechanism (MCAR/MAR/MNAR) determines the total number of missing positions $n_{\text{missing}}$.
+2. Compute the time-weight $w(t)$ for each timestep using the sigmoid ramp.
+3. Broadcast the weights across all features (every feature at the same timestep gets the same weight).
+4. Normalize the weights into a probability distribution over all positions.
+5. Sample exactly $n_{\text{missing}}$ positions without replacement, weighted by the time-decay probabilities.
+
+This preserves the exact missing count from the mechanism while redistributing where the missingness falls along the time axis.
 
 ```python
 X_miss, mask = simulate_missingness(
@@ -277,8 +377,8 @@ X_miss, mask = simulate_missingness(
 ```
 
 **Parameters:**
-- `decay_rate`: steepness of the temporal ramp (default: `3.0`). Higher = sharper transition.
-- `decay_center`: normalized time position (0–1) where missingness reaches 50% (default: `0.7`). Lower values shift missingness earlier.
+- `decay_rate`: steepness of the temporal ramp $\gamma$ (default: `3.0`). Higher = sharper transition.
+- `decay_center`: normalized time position $c$ where missingness reaches 50% (default: `0.7`). Lower values shift missingness earlier in the series.
 
 **Use cases:** sensor degradation, battery drain, participant fatigue, aging equipment.
 
@@ -286,14 +386,41 @@ X_miss, mask = simulate_missingness(
 
 ### Markov Chain
 
-Missingness at time $t$ depends on whether $t-1$ was missing, creating realistic "flickering" on/off patterns. Governed by a 2-state Markov chain per (sample, dimension) series:
+Missingness at each timestep depends on whether the previous timestep was missing, creating realistic "flickering" on/off patterns common in wearable sensor data. Each (sample, dimension) series is modeled as an independent 2-state Markov chain.
 
-$$P(\text{missing at } t \mid \text{observed at } t\!-\!1) = p_{\text{onset}}$$
-$$P(\text{missing at } t \mid \text{missing at } t\!-\!1) = p_{\text{persist}}$$
+The two states are "observed" and "missing", with transition probabilities:
 
-The `persist` parameter controls stickiness — how likely a missing state is to continue. `p_onset` is automatically calibrated from the target missing rate using the stationary distribution:
+$$P(\text{missing at } t \mid \text{observed at } t-1) = p_{\text{onset}}$$
+$$P(\text{missing at } t \mid \text{missing at } t-1) = p_{\text{persist}}$$
 
-$$\pi_{\text{missing}} = \frac{p_{\text{onset}}}{p_{\text{onset}} + 1 - p_{\text{persist}}}$$
+Variable definitions:
+- $p_{\text{onset}}$ — the probability of transitioning from the observed state to the missing state. This is automatically calibrated (you do not set it directly).
+- $p_{\text{persist}}$ — the probability of staying in the missing state once entered (`persist` parameter). This controls "stickiness" — how long missing bursts tend to last. Range: $[0, 1)$.
+- $t$ — the current timestep.
+- $t - 1$ — the previous timestep.
+
+The expected (average) burst length when in the missing state is $1 / (1 - p_{\text{persist}})$. For example, $p_{\text{persist}} = 0.8$ gives an average burst of 5 steps; $p_{\text{persist}} = 0.95$ gives an average burst of 20 steps.
+
+Automatic calibration of $p_{\text{onset}}$:
+
+The library automatically computes $p_{\text{onset}}$ from the target missing rate $\rho$ and the user-specified $p_{\text{persist}}$ using the stationary distribution of the Markov chain:
+
+$$\pi_{\text{missing}} = \frac{p_{\text{onset}}}{p_{\text{onset}} + (1 - p_{\text{persist}})}$$
+
+where $\pi_{\text{missing}}$ is the long-run fraction of time spent in the missing state (i.e., the target missing rate $\rho$). Solving for $p_{\text{onset}}$:
+
+$$p_{\text{onset}} = \frac{\rho \cdot (1 - p_{\text{persist}})}{1 - \rho}$$
+
+Step-by-step procedure:
+1. Compute $p_{\text{onset}}$ from the target rate $\rho$ and user-specified $p_{\text{persist}}$ using the formula above.
+2. For each (sample, dimension) series independently:
+   a. Initialize the state: draw from the stationary distribution (missing with probability $\rho$).
+   b. For each timestep $t = 1, 2, \ldots, T$:
+      - If currently missing: stay missing with probability $p_{\text{persist}}$, otherwise transition to observed.
+      - If currently observed: become missing with probability $p_{\text{onset}}$, otherwise stay observed.
+3. The resulting mask has temporally correlated missingness with the target rate achieved approximately (via the stationary distribution).
+
+The achieved rate is approximate because the Markov chain is stochastic and finite-length series may not fully converge to the stationary distribution.
 
 ```python
 # Moderate bursts (avg ~5 steps)
@@ -316,7 +443,7 @@ X_miss, mask = simulate_missingness(
 ```
 
 **Parameters:**
-- `persist`: probability of staying missing once entered, range [0, 1) (default: `0.8`). Higher = longer bursts.
+- `persist`: probability of staying missing once entered $p_{\text{persist}}$, range $[0, 1)$ (default: `0.8`). Higher = longer bursts.
 
 **Use cases:** intermittent connectivity, unstable sensor connections, WiFi/Bluetooth dropouts, flickering wearable sensors.
 
