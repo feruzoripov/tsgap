@@ -1,7 +1,7 @@
-"""Example usage of ts_missingness library."""
+"""Example usage of tsgap library."""
 
 import numpy as np
-from ts_missingness import simulate_missingness, simulate_many_rates, MissingnessSimulator
+from tsgap import simulate_missingness, simulate_many_rates, MissingnessSimulator
 
 # Generate sample time-series data
 np.random.seed(42)

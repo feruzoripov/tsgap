@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from ts_missingness import simulate_missingness, simulate_many_rates, MissingnessSimulator
+from tsgap import simulate_missingness, simulate_many_rates, MissingnessSimulator
 
 
 class TestMCAR:

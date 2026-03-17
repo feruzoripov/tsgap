@@ -1,4 +1,4 @@
-"""Setup script for ts_missingness library."""
+"""Setup script for tsgap library."""
 
 from setuptools import setup, find_packages
 
@@ -6,12 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="ts_missingness",
-    version="0.2.0",
+    name="tsgap",
+    version="0.3.0",
     author="Feruz Oripov",
     author_email="foripov@arizona.edu",
-    description="Time-series missingness simulation for imputation benchmarking",
-    url="https://github.com/feruzoripov/ts_missingness",
+    description="Composable time-series missingness simulation for imputation benchmarking",
+    url="https://github.com/feruzoripov/tsgap",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(),

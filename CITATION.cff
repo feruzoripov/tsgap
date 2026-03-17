@@ -4,7 +4,18 @@ authors:
   - family-names: "Oripov"
     given-names: "Feruz"
     orcid: "https://orcid.org/0009-0001-4303-0512"
-title: "Time-Series Missingness Simulation Library"
-version: 0.2.0
-date-released: 2026-02-21
-url: "https://github.com/feruzoripov/ts_missingness"
+title: "TSGap: Composable Time-Series Missingness Simulation"
+version: 0.3.0
+date-released: 2026-03-16
+url: "https://github.com/feruzoripov/tsgap"
+license: MIT
+repository-code: "https://github.com/feruzoripov/tsgap"
+keywords:
+  - time series
+  - missing data
+  - imputation
+  - benchmarking
+  - simulation
+  - MCAR
+  - MAR
+  - MNAR

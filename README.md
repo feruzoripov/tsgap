@@ -1,4 +1,4 @@
-# ts_missingness
+# TSGap
 
 A Python library for simulating realistic missingness in time-series data for imputation benchmarking.
 
@@ -30,7 +30,7 @@ Requires Python ≥ 3.9 and NumPy ≥ 1.19.
 
 ```python
 import numpy as np
-from ts_missingness import simulate_missingness
+from tsgap import simulate_missingness
 
 X = np.random.randn(1000, 6)  # (T, D) — 1000 timesteps, 6 features
 
@@ -345,7 +345,7 @@ For 3D data, MAR normalizes the driver signal per-participant and MNAR normalize
 ### Multiple Rates
 
 ```python
-from ts_missingness import simulate_many_rates
+from tsgap import simulate_many_rates
 
 rates = [0.05, 0.15, 0.25, 0.50]
 results = simulate_many_rates(X, "mcar", rates, seed=42)
@@ -359,7 +359,7 @@ Each rate gets a different seed derived from the base seed for independence.
 ### Object-Oriented Interface
 
 ```python
-from ts_missingness import MissingnessSimulator
+from tsgap import MissingnessSimulator
 
 sim = MissingnessSimulator(
     "mar", missing_rate=0.25, seed=42,
@@ -371,7 +371,7 @@ X_miss, mask = sim.generate(X)
 ### Registries
 
 ```python
-from ts_missingness import MECHANISMS, PATTERNS
+from tsgap import MECHANISMS, PATTERNS
 
 print(list(MECHANISMS.keys()))  # ['mcar', 'mar', 'mnar']
 print(list(PATTERNS.keys()))    # ['pointwise', 'point', 'scattered', 'block', 'contiguous', 'monotone', 'dropout', 'decay', 'degradation', 'markov', 'flickering']
@@ -383,7 +383,7 @@ print(list(PATTERNS.keys()))    # ['pointwise', 'point', 'scattered', 'block', '
 
 ```python
 import numpy as np
-from ts_missingness import simulate_missingness
+from tsgap import simulate_missingness
 
 # Ground truth
 X = np.random.randn(1000, 6)
@@ -467,7 +467,7 @@ assert np.isnan(X_miss[:10, 0]).all()  # Preserved
 ## Testing
 
 ```bash
-pytest ts_missingness/tests/ -v
+pytest tsgap/tests/ -v
 ```
 
 77 tests covering all mechanisms, patterns, edge cases, extreme rates, numerical stability, and validation.
@@ -477,11 +477,11 @@ pytest ts_missingness/tests/ -v
 ## Citation
 
 ```bibtex
-@software{ts_missingness,
+@software{tsgap,
   author = {Feruz Oripov},
-  title = {Time-Series Missingness Simulation Library},
+  title = {TSGap: Composable Time-Series Missingness Simulation},
   year = {2026},
-  url = {https://github.com/feruzoripov/ts_missingness}
+  url = {https://github.com/feruzoripov/tsgap}
 }
 ```
 
