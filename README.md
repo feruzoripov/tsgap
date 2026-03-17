@@ -132,6 +132,15 @@ $$\sigma(x) = \frac{1}{1 + e^{-x}}$$
 
 The sigmoid takes any real number $x$ and maps it to a value between 0 and 1. When $x = 0$, the output is 0.5. As $x$ grows large and positive, the output approaches 1. As $x$ grows large and negative, the output approaches 0. This makes it ideal for converting scores into probabilities.
 
+The figure below shows how the sigmoid is applied in each context:
+
+![How the sigmoid function is used across the library. Panel 1: the basic sigmoid curve. Panel 2: MAR uses it to convert driver signals to missing probabilities — higher strength (α) makes the curve steeper. Panel 3: MNAR uses different score functions f(z) to target high, low, or extreme values. Panel 4: the decay pattern uses a sigmoid ramp over time to shift missingness toward later timesteps.](assets/sigmoid_explained.png)
+
+- Panel 1 (Sigmoid Function): the basic S-curve. Input $x$ on the horizontal axis, output probability $\sigma(x)$ on the vertical axis. The key point $(0, 0.5)$ is marked — this is where the function crosses 50%.
+- Panel 2 (MAR Strength): shows how the `strength` parameter $\alpha$ controls the steepness of the probability curve. With $\alpha = 0.5$ (weak), the curve is nearly flat — all driver values produce similar missing probabilities. With $\alpha = 5.0$ (strong), the curve is steep — low driver values rarely cause missingness while high driver values almost always do.
+- Panel 3 (MNAR Modes): shows the three score functions. "High" mode ($f(z) = z$, red) targets high values. "Low" mode ($f(z) = -z$, blue) targets low values. "Extreme" mode ($f(z) = |z|$, purple) creates a U-shape that targets both tails, with values near the mean having the lowest missing probability.
+- Panel 4 (Decay Ramp): shows how `decay_rate` ($\gamma$) and `decay_center` ($c$) control the temporal weight curve. The default ($\gamma=3, c=0.7$) gives a smooth transition with most missingness in the last 30% of the series. A steep early configuration ($\gamma=6, c=0.5$) creates a sharp step at the midpoint. A gentle late configuration ($\gamma=2, c=0.8$) gives a gradual ramp concentrated at the very end.
+
 ---
 
 ## Mechanisms
