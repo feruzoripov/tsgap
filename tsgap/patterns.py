@@ -182,17 +182,15 @@ def apply_monotone_pattern(
     Once a dimension goes missing at time t, it stays missing for all t' > t.
     Models participant dropout in longitudinal studies and clinical trials.
 
-    The mechanism mask determines *which* dimensions drop out and roughly
-    *when* (earlier missing probability → earlier dropout). This pattern
-    enforces the monotone constraint on top of that.
+    The mechanism mask is used to determine *how much* each dimension should
+    be missing (its missing density). Dimensions that the mechanism targeted
+    more heavily get earlier dropout times. This preserves the mechanism's
+    influence: under MAR, dimensions driven by high-valued drivers drop out
+    earlier; under MNAR, dimensions with more extreme values drop out earlier;
+    under MCAR, dropout times are roughly uniform.
 
-    For each (sample, dimension) series the dropout time is the *first*
-    missing position produced by the mechanism. Everything from that point
-    onward is set to missing, and everything before it is set to observed.
-
-    The total missing count is adjusted to match the mechanism's original
-    count by shifting dropout times earlier or later while preserving the
-    monotone constraint.
+    The total missing count is preserved by distributing the budget across
+    dimensions proportionally to their mechanism-assigned missing densities.
 
     Parameters
     ----------
@@ -218,79 +216,75 @@ def apply_monotone_pattern(
     if is_2d:
         T, D = shape
         N = 1
-        # Reshape to 3D for uniform handling: (1, T, D)
         mask_3d = mask[np.newaxis, :, :]
     else:
         N, T, D = shape
         mask_3d = mask
 
-    # Compute initial dropout times from the mechanism mask.
-    # dropout_times[n, d] = first missing time, or T if never missing.
-    dropout_times = np.full((N, D), T, dtype=int)
+    # Compute per-(sample, dimension) missing density from the mechanism mask.
+    # This tells us how much the mechanism *wanted* each dimension to be missing.
+    # density[n, d] = fraction of timesteps missing in that series.
+    density = np.zeros((N, D), dtype=float)
     for n in range(N):
         for d in range(D):
-            missing_t = np.where(~mask_3d[n, :, d])[0]
-            if len(missing_t) > 0:
-                dropout_times[n, d] = missing_t[0]
+            density[n, d] = (~mask_3d[n, :, d]).sum() / T
 
-    def _build_monotone_mask(dt):
-        """Build a monotone mask from dropout times array."""
-        m = np.ones((N, T, D), dtype=bool)
+    # Allocate the total missing budget across dimensions proportionally
+    # to their mechanism densities. This preserves the mechanism's influence.
+    total_density = density.sum()
+    if total_density < 1e-10:
+        # No mechanism signal — fall back to equal allocation
+        density[:] = 1.0 / (N * D)
+        total_density = 1.0
+
+    # For each (n, d), compute how many timesteps should be missing
+    # (i.e., T - dropout_time = allocated missing count for that series)
+    dropout_times = np.full((N, D), T, dtype=int)
+    allocated = 0
+
+    for n in range(N):
+        for d in range(D):
+            # Proportional share of the total missing budget
+            share = density[n, d] / total_density
+            n_missing_nd = int(np.round(share * n_target_missing))
+            # Clamp to valid range
+            n_missing_nd = max(0, min(T, n_missing_nd))
+            dropout_times[n, d] = T - n_missing_nd
+            allocated += n_missing_nd
+
+    # Fix rounding errors: adjust to hit exact target
+    diff = allocated - n_target_missing
+    if diff != 0:
+        # Sort dimensions by density (descending) for adjustment priority
+        indices = []
         for n in range(N):
             for d in range(D):
-                if dt[n, d] < T:
-                    m[n, dt[n, d]:, d] = False
-        return m
+                indices.append((n, d, density[n, d]))
+        indices.sort(key=lambda x: x[2], reverse=True)
 
-    def _count_missing(dt):
-        """Count total missing entries for given dropout times."""
-        total = 0
-        for n in range(N):
-            for d in range(D):
-                if dt[n, d] < T:
-                    total += T - dt[n, d]
-        return total
+        if diff > 0:
+            # Allocated too many — push dropout times later (reduce missing)
+            for n_i, d_i, _ in indices:
+                if diff <= 0:
+                    break
+                if dropout_times[n_i, d_i] < T:
+                    dropout_times[n_i, d_i] += 1
+                    diff -= 1
+        else:
+            # Allocated too few — push dropout times earlier (add missing)
+            for n_i, d_i, _ in reversed(indices):
+                if diff >= 0:
+                    break
+                if dropout_times[n_i, d_i] > 0:
+                    dropout_times[n_i, d_i] -= 1
+                    diff += 1
 
-    n_current = _count_missing(dropout_times)
-
-    # Adjust by shifting dropout times to match target count.
-    # Each shift of one dropout time by 1 step changes count by 1.
-    max_iters = abs(n_current - n_target_missing) + 10
-
-    if n_current > n_target_missing:
-        # Too many missing — push dropout times later (increase them)
-        for _ in range(max_iters):
-            if _count_missing(dropout_times) <= n_target_missing:
-                break
-            # Find series with earliest dropout (most room to push later)
-            active = dropout_times < T
-            if not active.any():
-                break
-            # Among active series, pick the one with earliest dropout
-            candidates = np.argwhere(active)
-            earliest_idx = candidates[
-                dropout_times[candidates[:, 0], candidates[:, 1]].argmin()
-            ]
-            n_i, d_i = earliest_idx
-            dropout_times[n_i, d_i] += 1
-
-    elif n_current < n_target_missing:
-        # Too few missing — push dropout times earlier (decrease them)
-        for _ in range(max_iters):
-            if _count_missing(dropout_times) >= n_target_missing:
-                break
-            # Find series with latest dropout (most room to push earlier)
-            active = dropout_times > 0
-            if not active.any():
-                break
-            candidates = np.argwhere(active)
-            latest_idx = candidates[
-                dropout_times[candidates[:, 0], candidates[:, 1]].argmax()
-            ]
-            n_i, d_i = latest_idx
-            dropout_times[n_i, d_i] -= 1
-
-    new_mask = _build_monotone_mask(dropout_times)
+    # Build the monotone mask
+    new_mask = np.ones((N, T, D), dtype=bool)
+    for n in range(N):
+        for d in range(D):
+            if dropout_times[n, d] < T:
+                new_mask[n, dropout_times[n, d]:, d] = False
 
     if is_2d:
         return new_mask[0]

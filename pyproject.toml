@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsgap"
+version = "0.3.0"
+description = "Composable time-series missingness simulation for imputation benchmarking"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    {name = "Feruz Oripov", email = "foripov@arizona.edu"},
+]
+keywords = [
+    "time-series",
+    "missing-data",
+    "imputation",
+    "benchmarking",
+    "simulation",
+    "MCAR",
+    "MAR",
+    "MNAR",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+]
+
+[project.urls]
+Homepage = "https://github.com/feruzoripov/tsgap"
+Repository = "https://github.com/feruzoripov/tsgap"
+Issues = "https://github.com/feruzoripov/tsgap/issues"
+
+[tool.setuptools.packages.find]
+include = ["tsgap*"]
