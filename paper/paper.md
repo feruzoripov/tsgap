@@ -98,13 +98,11 @@ reproducibility guarantees, and no support for MAR or MNAR evaluation.
 
 # State of the Field
 
-Existing approaches to missingness simulation fall into three categories:
-dedicated R packages, Python libraries, and manual scripting. \autoref{comparison}
-summarizes the feature landscape.
+Existing approaches to missingness simulation---dedicated R packages, Python libraries, and manual scripting---each address the problem only partially, as summarized in \autoref{comparison}.
 
 The `ampute` function in `mice` [@vanbuuren2011mice] is the most established
 dedicated tool. It generates multivariate missingness using weighted sum scores
-and supports all three Rubin mechanisms. However, it operates on tabular data
+and supports all three Rubin mechanisms [@rubin1976inference] (MCAR, MAR, MNAR). However, it operates on tabular data
 without temporal awareness---it cannot produce contiguous blocks, monotone
 dropout, or other time-dependent structures---and is unavailable in Python, which
 limits its use in deep learning imputation pipelines that are predominantly
@@ -154,14 +152,16 @@ The library's architecture consists of three modules:
 
 **Mechanisms** (`mechanisms.py`) implement the probabilistic models. MCAR uses
 uniform sampling without replacement for exact rate control. MAR and MNAR use
-logistic probability models where missingness probability is a sigmoid function
-of a driver signal or the value itself. Both use automatic offset calibration via
-binary search to match target missing rates---an important practical choice,
-since analytical solutions for the offset are intractable when the sigmoid
-operates on empirical data distributions. MAR supports weighted multi-driver
+logistic probability models of the form $P(M_{ij} = 1) = \sigma(\alpha \cdot s_{ij} + \beta)$,
+where $M_{ij}$ is the missingness indicator at timestep $i$ and feature $j$,
+$\sigma$ is the sigmoid function, $\alpha$ is a user-specified strength parameter,
+$s_{ij}$ is a normalized score (derived from a driver signal for MAR or from the
+value itself for MNAR), and $\beta$ is an offset automatically calibrated via
+binary search to match the target missing rate. MAR supports weighted multi-driver
 signals computed as
 $z_i = \sum_k w_k \cdot (X_{i,k} - \mu_k) / \sigma_k$, where $w_k$ are
-user-specified weights.
+user-specified weights, $X_{i,k}$ is the value of driver dimension $k$ at
+timestep $i$, and $\mu_k$ and $\sigma_k$ are its mean and standard deviation.
 
 **Patterns** (`patterns.py`) reshape the temporal structure of the
 mechanism-generated mask. Five patterns are implemented: *pointwise* (scattered
@@ -196,9 +196,8 @@ without reliance on global RNG state.
 
 # Research Impact Statement
 
-`tsgap` was developed as part of a master's thesis at the University of Arizona
-investigating the sensitivity of time-series imputation algorithms to different
-missingness structures. The library is pip-installable (`pip install tsgap`),
+`tsgap` was developed at the University of Arizona to investigate the sensitivity
+of time-series imputation algorithms to different missingness structures. The library is pip-installable (`pip install tsgap`),
 includes comprehensive documentation with mathematical descriptions of all
 mechanisms and patterns, and provides 77 automated tests covering all
 mechanism--pattern combinations, edge cases, extreme rate calibration accuracy
@@ -217,8 +216,8 @@ responsibility for the final implementation.
 
 # Acknowledgements
 
-This work was conducted as part of a master's thesis at the University of
-Arizona. The authors thank the Center for Biomedical Informatics and
-Biostatistics for providing computational resources and infrastructure support.
+This work was supported by the Center for Biomedical Informatics and
+Biostatistics at the University of Arizona, which provided computational
+resources and infrastructure support.
 
 # References
