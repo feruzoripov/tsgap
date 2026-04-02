@@ -18,8 +18,8 @@ authors:
     orcid: 0000-0000-0000-0000
     affiliation: 2
   - name: Ali Bilgin
-    orcid: 0000-0000-0000-0000
-    affiliation: "3, 4"
+    orcid: 0000-0003-4196-4036
+    affiliation: "3, 4, 5"
   - name: Shravan Aras
     orcid: 0000-0000-0000-0000
     affiliation: 1
@@ -36,26 +36,30 @@ affiliations:
   - name: Department of Biomedical Engineering, University of Arizona, USA
     index: 4
     ror: 03m2x1q45
-date: 10 March 2026
+  - name: Radiology and Imaging Sciences, University of Arizona, USA
+    index: 5
+    ror: 03m2x1q45
+date: 1 April 2026
 bibliography: paper.bib
 ---
 
 # Summary
 
 Missing data is pervasive in time-series applications, particularly in healthcare
-monitoring, wearable sensors, and environmental sensing, where data loss arises
-from device failures, connectivity drops, patient dropout, and sensor degradation.
-Evaluating imputation algorithms requires generating controlled missingness in
-complete datasets, yet most benchmarking studies rely on simplistic random masking
-that fails to capture the structured, temporally correlated missingness observed
-in practice.
+monitoring, wearable sensors, and environmental sensing
+[@kazijevs2023deep; @bent2020investigating; @austin2021missing], where data
+loss arises from device failures, connectivity drops, patient dropout, and sensor
+degradation. Evaluating imputation algorithms requires generating controlled
+missingness in complete datasets, yet most benchmarking studies rely on
+simplistic random masking that fails to capture the structured, temporally
+correlated missingness observed in practice [@kazijevs2023deep].
 
 `tsgap` is a Python library that provides composable, reproducible missingness
 simulation for time-series data. Its core design contribution is the explicit
 separation of *mechanisms* (why data is missing) from *patterns* (how data is
 missing) as two orthogonal, independently configurable axes. This enables
 researchers to systematically evaluate imputation methods across realistic
-combinations---for example, testing whether an algorithm that performs well under
+combinations--for example, testing whether an algorithm that performs well under
 random scattered missingness also handles activity-dependent sensor dropout or
 gradual sensor degradation.
 
@@ -93,18 +97,19 @@ reproducibility guarantees, and no support for MAR or MNAR evaluation.
 - **Weighted multi-driver MAR**: A weighted linear combination of multiple
   observed variables drives missingness probability, enabling realistic
   multi-factor dependency modeling.
-- **Native 3D support**: Designed for longitudinal panel data $(N, T, D)$ with
-  per-participant normalization, not just single-subject time series.
+- **Native 3D support**: Operates natively on longitudinal panel data of shape
+  $(N, T, D)$, where $N$ denotes the number of subjects, $T$ the number of
+  timesteps, and $D$ the number of features.
 
 # State of the Field
 
-Existing approaches to missingness simulation---dedicated R packages, Python libraries, and manual scripting---each address the problem only partially, as summarized in \autoref{comparison}.
+Existing approaches to missingness simulation--dedicated R packages, Python libraries, and manual scripting--each address the problem only partially, as summarized in \autoref{comparison}.
 
 The `ampute` function in `mice` [@vanbuuren2011mice] is the most established
 dedicated tool. It generates multivariate missingness using weighted sum scores
 and supports all three Rubin mechanisms [@rubin1976inference] (MCAR, MAR, MNAR). However, it operates on tabular data
-without temporal awareness---it cannot produce contiguous blocks, monotone
-dropout, or other time-dependent structures---and is unavailable in Python, which
+without temporal awareness--it cannot produce contiguous blocks, monotone
+dropout, or other time-dependent structures--and is unavailable in Python, which
 limits its use in deep learning imputation pipelines that are predominantly
 Python-based.
 
