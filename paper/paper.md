@@ -202,14 +202,21 @@ without reliance on global RNG state.
 # Research Impact Statement
 
 `tsgap` was developed at the University of Arizona to investigate the sensitivity
-of time-series imputation algorithms to different missingness structures. The library is pip-installable (`pip install tsgap`),
-includes comprehensive documentation with mathematical descriptions of all
-mechanisms and patterns, and provides 77 automated tests covering all
-mechanism--pattern combinations, edge cases, extreme rate calibration accuracy
-(1%--90%), numerical stability, and reproducibility verification. The test suite
-runs in under 0.4 seconds. The package is released under the MIT license and
-hosted on GitHub with an open issue tracker to facilitate community adoption and
-contribution.
+of time-series imputation algorithms to different missingness structures. By providing standardized, reproducible missingness
+generation across all mechanism--pattern combinations, `tsgap` enables
+researchers to systematically benchmark both existing and future imputation
+methods--including statistical, machine learning, and deep learning
+approaches--under controlled and realistic conditions. This addresses a
+recognized gap in the imputation literature, where evaluations are typically
+limited to MCAR-only masking at low missing rates
+[@kazijevs2023deep; @cao2018brits]. The library is pip-installable
+(`pip install tsgap`), includes comprehensive documentation with mathematical
+descriptions of all mechanisms and patterns, and provides 77 automated tests
+covering all mechanism--pattern combinations, edge cases, extreme rate
+calibration accuracy (1%--90%), numerical stability, and reproducibility
+verification. The test suite runs in under 0.4 seconds. The package is released
+under the MIT license and hosted on GitHub with an open issue tracker to
+facilitate community adoption and contribution.
 
 # AI Usage Disclosure
 
