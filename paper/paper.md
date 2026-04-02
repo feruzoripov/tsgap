@@ -73,15 +73,16 @@ data may be missing as scattered individual points, contiguous blocks (sensor
 dropout), monotone tails (participant dropout), gradually increasing gaps (sensor
 degradation), or intermittent bursts (flickering connections).
 
-Existing tools address these concerns only partially. The `ampute` function in
-the R package `mice` [@vanbuuren2011mice] provides multivariate amputation with
-weighted sum scores but lacks temporal pattern awareness and is unavailable in
-Python. PyGrinder [@du2023pypots], part of the PyPOTS ecosystem, implements MCAR,
-MAR, and MNAR in Python but conflates mechanisms with patterns and does not offer
-rate calibration for non-MCAR mechanisms. Most published imputation benchmarks
-[@cao2018brits; @du2023saits; @fortuin2020gpvae] use ad-hoc MCAR-only masking
-with `numpy.random`, providing no control over temporal structure, no
-reproducibility guarantees, and no support for MAR or MNAR evaluation.
+Existing tools address these concerns only partially.
+The `ampute` function in the R package `mice` [@vanbuuren2011mice] provides
+multivariate amputation but lacks temporal pattern awareness. PyGrinder
+[@du2023pypots] implements MCAR, MAR, and MNAR in Python but conflates
+mechanisms with patterns and does not offer rate calibration for non-MCAR
+mechanisms. Most published imputation benchmarks
+[@cao2018brits; @du2023saits; @fortuin2020gpvae] use ad-hoc MCAR-only masking,
+providing no control over temporal structure and no support for MAR or MNAR
+evaluation. A detailed comparison with these tools is provided in the State of
+the Field section.
 
 `tsgap` addresses these gaps by providing:
 
@@ -89,8 +90,9 @@ reproducibility guarantees, and no support for MAR or MNAR evaluation.
   distinct missingness configurations, all accessible through a single function
   call.
 - **Automatic rate calibration**: Binary search offset calibration for MAR and
-  MNAR ensures researchers can conduct controlled experiments at specific missing
-  rates, not just whatever rate a sigmoid happens to produce.
+  MNAR ensures that researchers can conduct controlled experiments at precise
+  target missing rates, rather than accepting the uncontrolled rates produced
+  by uncalibrated sigmoid models.
 - **Temporal pattern diversity**: Block, monotone, temporal decay, and Markov
   chain patterns capture real-world missingness structures absent from existing
   Python tools.
