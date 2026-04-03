@@ -646,8 +646,8 @@ pytest tsgap/tests/ -v
 
 ```bibtex
 @software{tsgap,
-  author = {Feruz Oripov},
-  title = {TSGap: Composable Time-Series Missingness Simulation},
+  author = {Oripov, Feruz and Korchagina, Kseniia and Bonsu, Enock Adu and Bilgin, Ali and Aras, Shravan},
+  title = {TSGap: A Python Library for Composable Time-Series Missingness Simulation},
   year = {2026},
   url = {https://github.com/feruzoripov/tsgap}
 }

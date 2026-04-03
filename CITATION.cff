@@ -4,7 +4,15 @@ authors:
   - family-names: "Oripov"
     given-names: "Feruz"
     orcid: "https://orcid.org/0009-0001-4303-0512"
-title: "TSGap: Composable Time-Series Missingness Simulation"
+  - family-names: "Korchagina"
+    given-names: "Kseniia"
+  - family-names: "Bonsu"
+    given-names: "Enock Adu"
+  - family-names: "Bilgin"
+    given-names: "Ali"
+  - family-names: "Aras"
+    given-names: "Shravan"
+title: "TSGap: A Python Library for Composable Time-Series Missingness Simulation"
 version: 0.3.0
 date-released: 2026-03-16
 url: "https://github.com/feruzoripov/tsgap"
