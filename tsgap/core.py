@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from .mechanisms import MECHANISMS
+from .mechanisms import MECHANISMS, _get_eligible_mask
 from .patterns import PATTERNS
 
 
@@ -157,12 +157,22 @@ def simulate_missingness(
     
     # Identify existing NaNs
     existing_nans = np.isnan(X)
+    eligible_mask = _get_eligible_mask(
+        X, existing_nans, target=kwargs.get("target", "all")
+    )
     
     # Step 1: Generate mechanism-specific mask (WHY missing)
     mask = MECHANISMS[mechanism](X, missing_rate, existing_nans, rng=rng, **kwargs)
     
     # Step 2: Apply pattern (HOW missing)
-    mask = PATTERNS[pattern](mask, X.shape, rng=rng, **kwargs)
+    mask = PATTERNS[pattern](
+        mask,
+        X.shape,
+        rng=rng,
+        eligible_mask=eligible_mask,
+        forced_missing=existing_nans,
+        **kwargs
+    )
     
     # Apply mask
     X_missing[~mask] = np.nan
