@@ -478,6 +478,127 @@ class TestPatternAPI:
         with pytest.raises(ValueError, match="Unknown pattern"):
             simulate_missingness(X, "mcar", 0.15, pattern="invalid")
 
+    def test_invalid_block_len(self):
+        """Should raise error for invalid block length."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="block_len must be >= 1"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="block", block_len=0
+            )
+
+    def test_invalid_decay_parameters(self):
+        """Should raise error for invalid decay parameters."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="decay_rate must be >= 0"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="decay", decay_rate=-1
+            )
+
+        with pytest.raises(ValueError, match="decay_center must be"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="decay", decay_center=1.5
+            )
+
+
+class TestPatternInvariants:
+    """Test invariants that every pattern must preserve."""
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_patterns_preserve_target_dimensions_2d(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        target = [1, 3]
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.25, seed=42, pattern=pattern, target=target, **kwargs
+        )
+
+        for d in range(X.shape[1]):
+            if d in target:
+                assert (~mask[:, d]).sum() > 0
+            else:
+                assert mask[:, d].all()
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_patterns_preserve_target_dimensions_3d(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((4, 100, 5))
+        target = [0, 4]
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.25, seed=42, pattern=pattern, target=target, **kwargs
+        )
+
+        for d in range(X.shape[-1]):
+            if d in target:
+                assert (~mask[:, :, d]).sum() > 0
+            else:
+                assert mask[:, :, d].all()
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_patterns_preserve_existing_nans(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        X[:10, 0] = np.nan
+        X[30:40, 3] = np.nan
+
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern=pattern, target=[1, 3], **kwargs
+        )
+
+        assert not mask[np.isnan(X)].any()
+        assert np.isnan(X_missing[np.isnan(X)]).all()
+        assert mask[:, 0][~np.isnan(X[:, 0])].all()
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_mask_and_output_are_consistent(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        X[:10, 0] = np.nan
+
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern=pattern, target=[1, 2], **kwargs
+        )
+
+        assert np.isnan(X_missing[~mask]).all()
+        observed_original = X[mask]
+        observed_missing = X_missing[mask]
+        np.testing.assert_array_equal(observed_missing, observed_original)
+
 
 class TestExtremeRates:
     """Test calibration accuracy at extreme missing rates."""
