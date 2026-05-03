@@ -30,6 +30,23 @@ mae = np.mean(np.abs(X[missing_idx] - X_imputed[missing_idx]))
 print({"rmse": rmse, "mae": mae})
 ```
 
+## Runnable Example
+
+The repository includes a dependency-light benchmark script:
+
+```bash
+python examples/benchmark_imputation.py
+```
+
+To save the results table:
+
+```bash
+python examples/benchmark_imputation.py --csv results/benchmark.csv
+```
+
+The script compares mean filling, forward fill, and linear interpolation across
+representative MCAR, MAR, and MNAR scenarios.
+
 ## Comparing Conditions
 
 ```python
