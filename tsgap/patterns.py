@@ -5,6 +5,40 @@ from __future__ import annotations
 import numpy as np
 
 
+def _pattern_context(
+    mask: np.ndarray,
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return pattern eligibility and forced-missing masks."""
+    if eligible_mask is None:
+        eligible_mask = np.ones_like(mask, dtype=bool)
+    else:
+        eligible_mask = eligible_mask.astype(bool, copy=False)
+
+    if forced_missing is None:
+        forced_missing = np.zeros_like(mask, dtype=bool)
+    else:
+        forced_missing = forced_missing.astype(bool, copy=False)
+
+    return eligible_mask, forced_missing
+
+
+def _finalize_pattern_mask(
+    mask: np.ndarray,
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
+) -> np.ndarray:
+    """Preserve non-eligible observed positions and forced missing positions."""
+    eligible_mask, forced_missing = _pattern_context(
+        mask, eligible_mask, forced_missing
+    )
+    finalized = np.ones_like(mask, dtype=bool)
+    finalized[eligible_mask] = mask[eligible_mask]
+    finalized[forced_missing] = False
+    return finalized
+
+
 def apply_pointwise_pattern(
     mask: np.ndarray,
     shape: tuple[int, ...] | None = None,
@@ -38,6 +72,8 @@ def apply_block_pattern(
     shape: tuple[int, ...],
     block_len: int = 10,
     block_density: float = 0.7,
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
     **kwargs
 ) -> np.ndarray:
@@ -67,13 +103,19 @@ def apply_block_pattern(
     if rng is None:
         rng = np.random.default_rng()
     
+    eligible_mask, forced_missing = _pattern_context(
+        mask, eligible_mask, forced_missing
+    )
+
+    if block_len < 1:
+        raise ValueError("block_len must be >= 1")
     if not 0.0 <= block_density <= 1.0:
         raise ValueError("block_density must be between 0.0 and 1.0")
     
     # Count current missing points
-    n_missing = (~mask).sum()
+    n_missing = ((~mask) & eligible_mask).sum()
     if n_missing == 0:
-        return mask
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
     
     # Determine how many missing points should be in blocks
     n_block_missing = int(n_missing * block_density)
@@ -83,7 +125,7 @@ def apply_block_pattern(
     new_mask = mask.copy()
     
     # Get currently missing indices
-    missing_indices = np.where(~mask)
+    missing_indices = np.where((~mask) & eligible_mask)
     
     # Restore some points (keep only n_point_missing as point-wise)
     if n_point_missing < n_missing:
@@ -107,9 +149,11 @@ def apply_block_pattern(
     
     # Add block missingness
     if n_block_missing > 0:
-        new_mask = _add_blocks(new_mask, shape, block_len, n_block_missing, rng)
+        new_mask = _add_blocks(
+            new_mask, shape, block_len, n_block_missing, rng, eligible_mask
+        )
     
-    return new_mask
+    return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
 
 
 def _add_blocks(
@@ -117,7 +161,8 @@ def _add_blocks(
     shape: tuple[int, ...],
     block_len: int,
     n_target: int,
-    rng: np.random.Generator
+    rng: np.random.Generator,
+    eligible_mask: np.ndarray
 ) -> np.ndarray:
     """Add contiguous missing blocks to mask."""
     
@@ -127,6 +172,19 @@ def _add_blocks(
     else:  # 3D
         N, T, D = shape
     
+    if len(shape) == 2:
+        eligible_series = [(0, d) for d in range(D) if eligible_mask[:, d].any()]
+    else:
+        eligible_series = [
+            (n, d)
+            for n in range(N)
+            for d in range(D)
+            if eligible_mask[n, :, d].any()
+        ]
+
+    if not eligible_series:
+        return mask
+
     n_added = 0
     max_attempts = 1000
     attempts = 0
@@ -134,9 +192,8 @@ def _add_blocks(
     while n_added < n_target and attempts < max_attempts:
         attempts += 1
         
-        # Randomly select sample (if 3D), dimension, and start time
-        n_idx = rng.integers(0, N) if N > 1 else 0
-        d_idx = rng.integers(0, D)
+        # Randomly select eligible sample/dimension and start time
+        n_idx, d_idx = eligible_series[rng.integers(0, len(eligible_series))]
         t_start = rng.integers(0, max(1, T - block_len + 1))
         t_end = min(t_start + block_len, T)
         
@@ -144,9 +201,15 @@ def _add_blocks(
         remaining = n_target - n_added
         
         if len(shape) == 2:
-            block_slice = mask[t_start:t_end, d_idx]
+            block_slice = (
+                mask[t_start:t_end, d_idx]
+                & eligible_mask[t_start:t_end, d_idx]
+            )
         else:
-            block_slice = mask[n_idx, t_start:t_end, d_idx]
+            block_slice = (
+                mask[n_idx, t_start:t_end, d_idx]
+                & eligible_mask[n_idx, t_start:t_end, d_idx]
+            )
         
         n_can_add = block_slice.sum()  # Count currently observed
         
@@ -163,9 +226,11 @@ def _add_blocks(
             n_added += remaining
         else:
             if len(shape) == 2:
-                mask[t_start:t_end, d_idx] = False
+                positions = np.where(block_slice)[0]
+                mask[t_start + positions, d_idx] = False
             else:
-                mask[n_idx, t_start:t_end, d_idx] = False
+                positions = np.where(block_slice)[0]
+                mask[n_idx, t_start + positions, d_idx] = False
             n_added += n_can_add
     
     return mask
@@ -174,6 +239,8 @@ def _add_blocks(
 def apply_monotone_pattern(
     mask: np.ndarray,
     shape: tuple[int, ...],
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
     **kwargs
 ) -> np.ndarray:
@@ -206,10 +273,14 @@ def apply_monotone_pattern(
     mask : np.ndarray
         Modified mask with monotone constraint enforced
     """
-    n_target_missing = int((~mask).sum())
+    eligible_mask, forced_missing = _pattern_context(
+        mask, eligible_mask, forced_missing
+    )
+
+    n_target_missing = int(((~mask) & eligible_mask).sum())
 
     if n_target_missing == 0:
-        return mask
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
 
     is_2d = len(shape) == 2
 
@@ -217,25 +288,35 @@ def apply_monotone_pattern(
         T, D = shape
         N = 1
         mask_3d = mask[np.newaxis, :, :]
+        eligible_3d = eligible_mask[np.newaxis, :, :]
     else:
         N, T, D = shape
         mask_3d = mask
+        eligible_3d = eligible_mask
 
     # Compute per-(sample, dimension) missing density from the mechanism mask.
     # This tells us how much the mechanism *wanted* each dimension to be missing.
     # density[n, d] = fraction of timesteps missing in that series.
     density = np.zeros((N, D), dtype=float)
+    capacity = np.zeros((N, D), dtype=int)
     for n in range(N):
         for d in range(D):
-            density[n, d] = (~mask_3d[n, :, d]).sum() / T
+            capacity[n, d] = int(eligible_3d[n, :, d].sum())
+            if capacity[n, d] > 0:
+                density[n, d] = (
+                    ((~mask_3d[n, :, d]) & eligible_3d[n, :, d]).sum()
+                    / capacity[n, d]
+                )
 
     # Allocate the total missing budget across dimensions proportionally
     # to their mechanism densities. This preserves the mechanism's influence.
     total_density = density.sum()
     if total_density < 1e-10:
-        # No mechanism signal — fall back to equal allocation
-        density[:] = 1.0 / (N * D)
-        total_density = 1.0
+        # No mechanism signal — fall back to equal allocation across eligible
+        density = (capacity > 0).astype(float)
+        total_density = density.sum()
+        if total_density < 1e-10:
+            return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
 
     # For each (n, d), compute how many timesteps should be missing
     # (i.e., T - dropout_time = allocated missing count for that series)
@@ -248,7 +329,7 @@ def apply_monotone_pattern(
             share = density[n, d] / total_density
             n_missing_nd = int(np.round(share * n_target_missing))
             # Clamp to valid range
-            n_missing_nd = max(0, min(T, n_missing_nd))
+            n_missing_nd = max(0, min(capacity[n, d], n_missing_nd))
             dropout_times[n, d] = T - n_missing_nd
             allocated += n_missing_nd
 
@@ -275,7 +356,7 @@ def apply_monotone_pattern(
             for n_i, d_i, _ in reversed(indices):
                 if diff >= 0:
                     break
-                if dropout_times[n_i, d_i] > 0:
+                if dropout_times[n_i, d_i] > T - capacity[n_i, d_i]:
                     dropout_times[n_i, d_i] -= 1
                     diff += 1
 
@@ -284,11 +365,13 @@ def apply_monotone_pattern(
     for n in range(N):
         for d in range(D):
             if dropout_times[n, d] < T:
-                new_mask[n, dropout_times[n, d]:, d] = False
+                eligible_tail = eligible_3d[n, dropout_times[n, d]:, d]
+                tail_positions = np.where(eligible_tail)[0]
+                new_mask[n, dropout_times[n, d] + tail_positions, d] = False
 
     if is_2d:
-        return new_mask[0]
-    return new_mask
+        return _finalize_pattern_mask(new_mask[0], eligible_mask, forced_missing)
+    return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
 
 
 def apply_temporal_decay_pattern(
@@ -296,6 +379,8 @@ def apply_temporal_decay_pattern(
     shape: tuple[int, ...],
     decay_rate: float = 3.0,
     decay_center: float = 0.7,
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
     **kwargs
 ) -> np.ndarray:
@@ -336,9 +421,18 @@ def apply_temporal_decay_pattern(
     if rng is None:
         rng = np.random.default_rng()
 
-    n_target_missing = (~mask).sum()
+    eligible_mask, forced_missing = _pattern_context(
+        mask, eligible_mask, forced_missing
+    )
+
+    if decay_rate < 0:
+        raise ValueError("decay_rate must be >= 0")
+    if not 0.0 <= decay_center <= 1.0:
+        raise ValueError("decay_center must be between 0.0 and 1.0")
+
+    n_target_missing = ((~mask) & eligible_mask).sum()
     if n_target_missing == 0:
-        return mask
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
 
     if len(shape) == 2:
         T, D = shape
@@ -359,18 +453,12 @@ def apply_temporal_decay_pattern(
             weights_1d[np.newaxis, :, np.newaxis], shape
         ).copy()
 
-    # Start with all observed, then sample n_target_missing positions
-    # weighted by temporal decay
+    # Start with all observed, then sample n_target_missing eligible positions
+    # weighted by temporal decay.
     new_mask = np.ones_like(mask, dtype=bool)
 
-    # Preserve existing NaN positions (where both masks agree on missing)
-    existing_missing = ~mask
-    # Positions eligible for temporal resampling: not already forced missing
-    # by existing NaNs that the mechanism preserved
-    eligible = np.ones_like(mask, dtype=bool)
-
     # Flatten for weighted sampling
-    flat_weights = weights.ravel() * eligible.ravel().astype(float)
+    flat_weights = weights.ravel() * eligible_mask.ravel().astype(float)
 
     # Normalize
     weight_sum = flat_weights.sum()
@@ -389,13 +477,15 @@ def apply_temporal_decay_pattern(
     flat_mask[chosen] = False
     new_mask = flat_mask.reshape(shape)
 
-    return new_mask
+    return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
 
 
 def apply_markov_pattern(
     mask: np.ndarray,
     shape: tuple[int, ...],
     persist: float = 0.8,
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
     **kwargs
 ) -> np.ndarray:
@@ -451,9 +541,13 @@ def apply_markov_pattern(
     if not 0.0 <= persist < 1.0:
         raise ValueError("persist must be in [0, 1), got {:.4f}".format(persist))
 
-    n_target_missing = int((~mask).sum())
+    eligible_mask, forced_missing = _pattern_context(
+        mask, eligible_mask, forced_missing
+    )
+
+    n_target_missing = int(((~mask) & eligible_mask).sum())
     if n_target_missing == 0:
-        return mask
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
 
     is_2d = len(shape) == 2
 
@@ -463,9 +557,9 @@ def apply_markov_pattern(
     else:
         N, T, D = shape
 
-    total_elements = N * T * D
+    total_elements = int(eligible_mask.sum())
     if total_elements == 0:
-        return mask
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
 
     # Target missing rate (global)
     pi_missing = n_target_missing / total_elements
@@ -475,9 +569,13 @@ def apply_markov_pattern(
     # => p_onset = π × (1 - persist) / (1 - π)
     if pi_missing >= 1.0:
         # Everything missing
-        return np.zeros_like(mask, dtype=bool)
+        new_mask = np.ones_like(mask, dtype=bool)
+        new_mask[eligible_mask] = False
+        return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
     if pi_missing <= 0.0:
-        return np.ones_like(mask, dtype=bool)
+        return _finalize_pattern_mask(
+            np.ones_like(mask, dtype=bool), eligible_mask, forced_missing
+        )
 
     p_onset = pi_missing * (1.0 - persist) / (1.0 - pi_missing)
     # Clamp to valid probability
@@ -488,9 +586,14 @@ def apply_markov_pattern(
 
     if is_2d:
         for d in range(D):
+            if not eligible_mask[:, d].any():
+                continue
             # Initialize: use mechanism's first timestep state
             is_missing = rng.random() < pi_missing
             for t in range(T):
+                if not eligible_mask[t, d]:
+                    new_mask[t, d] = True
+                    continue
                 if is_missing:
                     new_mask[t, d] = False
                     # Transition: stay missing with prob persist
@@ -501,15 +604,20 @@ def apply_markov_pattern(
     else:  # 3D
         for n in range(N):
             for d in range(D):
+                if not eligible_mask[n, :, d].any():
+                    continue
                 is_missing = rng.random() < pi_missing
                 for t in range(T):
+                    if not eligible_mask[n, t, d]:
+                        new_mask[n, t, d] = True
+                        continue
                     if is_missing:
                         new_mask[n, t, d] = False
                         is_missing = rng.random() < persist
                     else:
                         is_missing = rng.random() < p_onset
 
-    return new_mask
+    return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
 
 
 # Pattern registry

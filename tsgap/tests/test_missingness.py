@@ -2,7 +2,25 @@
 
 import numpy as np
 import pytest
-from tsgap import simulate_missingness, simulate_many_rates, MissingnessSimulator
+
+from tsgap import MissingnessSimulator, simulate_many_rates, simulate_missingness
+
+
+def _average_missing_run_length(mask):
+    """Return the average contiguous missing run length in a 2D mask."""
+    lengths = []
+    for d in range(mask.shape[-1]):
+        run = 0
+        for is_missing in ~mask[:, d]:
+            if is_missing:
+                run += 1
+            else:
+                if run > 0:
+                    lengths.append(run)
+                run = 0
+        if run > 0:
+            lengths.append(run)
+    return np.mean(lengths) if lengths else 0.0
 
 
 class TestMCAR:
@@ -79,6 +97,30 @@ class TestMAR:
         # Should have different missingness rates
         assert abs(missing_low - missing_high) > 10
 
+    def test_direction_controls_driver_relationship(self):
+        """MAR direction should flip which driver values are masked more."""
+        rng = np.random.default_rng(42)
+        X = rng.standard_normal((600, 4))
+        X[:300, 0] = -3
+        X[300:, 0] = 3
+
+        _, mask_positive = simulate_missingness(
+            X, "mar", 0.30, seed=42,
+            driver_dims=[0], strength=4.0, direction="positive"
+        )
+        _, mask_negative = simulate_missingness(
+            X, "mar", 0.30, seed=42,
+            driver_dims=[0], strength=4.0, direction="negative"
+        )
+
+        positive_low = (~mask_positive[:300]).mean()
+        positive_high = (~mask_positive[300:]).mean()
+        negative_low = (~mask_negative[:300]).mean()
+        negative_high = (~mask_negative[300:]).mean()
+
+        assert positive_high > positive_low
+        assert negative_low > negative_high
+
 
 class TestMNAR:
     """Test MNAR mechanism."""
@@ -108,6 +150,36 @@ class TestMNAR:
         
         # Extreme values should be more likely missing
         assert not mask[0, 0] or not mask[1, 0]  # At least one should be missing
+
+    def test_high_and_low_modes_target_correct_tails(self):
+        """MNAR high/low modes should target the expected value tails."""
+        X = np.linspace(-3, 3, 600).reshape(200, 3)
+
+        _, mask_high = simulate_missingness(
+            X, "mnar", 0.30, seed=42, mnar_mode="high", strength=5.0
+        )
+        _, mask_low = simulate_missingness(
+            X, "mnar", 0.30, seed=42, mnar_mode="low", strength=5.0
+        )
+
+        high_values = X > np.quantile(X, 0.75)
+        low_values = X < np.quantile(X, 0.25)
+
+        assert (~mask_high[high_values]).mean() > (~mask_high[low_values]).mean()
+        assert (~mask_low[low_values]).mean() > (~mask_low[high_values]).mean()
+
+    def test_extreme_mode_targets_both_tails(self):
+        """MNAR extreme mode should mask tails more than central values."""
+        X = np.linspace(-3, 3, 600).reshape(200, 3)
+
+        _, mask = simulate_missingness(
+            X, "mnar", 0.30, seed=42, mnar_mode="extreme", strength=5.0
+        )
+
+        tails = np.abs(X) > np.quantile(np.abs(X), 0.75)
+        center = np.abs(X) < np.quantile(np.abs(X), 0.25)
+
+        assert (~mask[tails]).mean() > (~mask[center]).mean()
 
 
 class TestBlockMissingness:
@@ -141,6 +213,23 @@ class TestBlockMissingness:
             # Should have some longer runs
             if runs:
                 assert max(runs) >= 5  # At least some blocks
+
+    def test_block_has_longer_runs_than_pointwise(self):
+        """Block pattern should increase average missing run length."""
+        X = np.random.default_rng(42).standard_normal((600, 5))
+
+        _, mask_pointwise = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern="pointwise"
+        )
+        _, mask_block = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_len=12, block_density=0.9
+        )
+
+        assert (
+            _average_missing_run_length(mask_block)
+            > _average_missing_run_length(mask_pointwise)
+        )
 
 
 class TestReproducibility:
@@ -477,6 +566,127 @@ class TestPatternAPI:
         
         with pytest.raises(ValueError, match="Unknown pattern"):
             simulate_missingness(X, "mcar", 0.15, pattern="invalid")
+
+    def test_invalid_block_len(self):
+        """Should raise error for invalid block length."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="block_len must be >= 1"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="block", block_len=0
+            )
+
+    def test_invalid_decay_parameters(self):
+        """Should raise error for invalid decay parameters."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="decay_rate must be >= 0"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="decay", decay_rate=-1
+            )
+
+        with pytest.raises(ValueError, match="decay_center must be"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="decay", decay_center=1.5
+            )
+
+
+class TestPatternInvariants:
+    """Test invariants that every pattern must preserve."""
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_patterns_preserve_target_dimensions_2d(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        target = [1, 3]
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.25, seed=42, pattern=pattern, target=target, **kwargs
+        )
+
+        for d in range(X.shape[1]):
+            if d in target:
+                assert (~mask[:, d]).sum() > 0
+            else:
+                assert mask[:, d].all()
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_patterns_preserve_target_dimensions_3d(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((4, 100, 5))
+        target = [0, 4]
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.25, seed=42, pattern=pattern, target=target, **kwargs
+        )
+
+        for d in range(X.shape[-1]):
+            if d in target:
+                assert (~mask[:, :, d]).sum() > 0
+            else:
+                assert mask[:, :, d].all()
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_patterns_preserve_existing_nans(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        X[:10, 0] = np.nan
+        X[30:40, 3] = np.nan
+
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern=pattern, target=[1, 3], **kwargs
+        )
+
+        assert not mask[np.isnan(X)].any()
+        assert np.isnan(X_missing[np.isnan(X)]).all()
+        assert mask[:, 0][~np.isnan(X[:, 0])].all()
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 8}),
+            ("monotone", {}),
+            ("decay", {}),
+            ("markov", {"persist": 0.7}),
+        ],
+    )
+    def test_mask_and_output_are_consistent(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        X[:10, 0] = np.nan
+
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern=pattern, target=[1, 2], **kwargs
+        )
+
+        assert np.isnan(X_missing[~mask]).all()
+        observed_original = X[mask]
+        observed_missing = X_missing[mask]
+        np.testing.assert_array_equal(observed_missing, observed_original)
 
 
 class TestExtremeRates:

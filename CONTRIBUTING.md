@@ -17,6 +17,13 @@ pytest tsgap/tests/ -v
 
 All tests must pass before submitting a pull request.
 
+To run the same core checks used in CI:
+
+```bash
+ruff check tsgap examples
+pytest --cov=tsgap --cov-report=term-missing
+```
+
 ## Adding a New Pattern
 
 1. Implement your pattern function in `tsgap/patterns.py` following the existing signature:
