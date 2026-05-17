@@ -5,6 +5,23 @@ import pytest
 from tsgap import simulate_missingness, simulate_many_rates, MissingnessSimulator
 
 
+def _average_missing_run_length(mask):
+    """Return the average contiguous missing run length in a 2D mask."""
+    lengths = []
+    for d in range(mask.shape[-1]):
+        run = 0
+        for is_missing in ~mask[:, d]:
+            if is_missing:
+                run += 1
+            else:
+                if run > 0:
+                    lengths.append(run)
+                run = 0
+        if run > 0:
+            lengths.append(run)
+    return np.mean(lengths) if lengths else 0.0
+
+
 class TestMCAR:
     """Test MCAR mechanism."""
     
@@ -79,6 +96,30 @@ class TestMAR:
         # Should have different missingness rates
         assert abs(missing_low - missing_high) > 10
 
+    def test_direction_controls_driver_relationship(self):
+        """MAR direction should flip which driver values are masked more."""
+        rng = np.random.default_rng(42)
+        X = rng.standard_normal((600, 4))
+        X[:300, 0] = -3
+        X[300:, 0] = 3
+
+        _, mask_positive = simulate_missingness(
+            X, "mar", 0.30, seed=42,
+            driver_dims=[0], strength=4.0, direction="positive"
+        )
+        _, mask_negative = simulate_missingness(
+            X, "mar", 0.30, seed=42,
+            driver_dims=[0], strength=4.0, direction="negative"
+        )
+
+        positive_low = (~mask_positive[:300]).mean()
+        positive_high = (~mask_positive[300:]).mean()
+        negative_low = (~mask_negative[:300]).mean()
+        negative_high = (~mask_negative[300:]).mean()
+
+        assert positive_high > positive_low
+        assert negative_low > negative_high
+
 
 class TestMNAR:
     """Test MNAR mechanism."""
@@ -108,6 +149,36 @@ class TestMNAR:
         
         # Extreme values should be more likely missing
         assert not mask[0, 0] or not mask[1, 0]  # At least one should be missing
+
+    def test_high_and_low_modes_target_correct_tails(self):
+        """MNAR high/low modes should target the expected value tails."""
+        X = np.linspace(-3, 3, 600).reshape(200, 3)
+
+        _, mask_high = simulate_missingness(
+            X, "mnar", 0.30, seed=42, mnar_mode="high", strength=5.0
+        )
+        _, mask_low = simulate_missingness(
+            X, "mnar", 0.30, seed=42, mnar_mode="low", strength=5.0
+        )
+
+        high_values = X > np.quantile(X, 0.75)
+        low_values = X < np.quantile(X, 0.25)
+
+        assert (~mask_high[high_values]).mean() > (~mask_high[low_values]).mean()
+        assert (~mask_low[low_values]).mean() > (~mask_low[high_values]).mean()
+
+    def test_extreme_mode_targets_both_tails(self):
+        """MNAR extreme mode should mask tails more than central values."""
+        X = np.linspace(-3, 3, 600).reshape(200, 3)
+
+        _, mask = simulate_missingness(
+            X, "mnar", 0.30, seed=42, mnar_mode="extreme", strength=5.0
+        )
+
+        tails = np.abs(X) > np.quantile(np.abs(X), 0.75)
+        center = np.abs(X) < np.quantile(np.abs(X), 0.25)
+
+        assert (~mask[tails]).mean() > (~mask[center]).mean()
 
 
 class TestBlockMissingness:
@@ -141,6 +212,23 @@ class TestBlockMissingness:
             # Should have some longer runs
             if runs:
                 assert max(runs) >= 5  # At least some blocks
+
+    def test_block_has_longer_runs_than_pointwise(self):
+        """Block pattern should increase average missing run length."""
+        X = np.random.default_rng(42).standard_normal((600, 5))
+
+        _, mask_pointwise = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern="pointwise"
+        )
+        _, mask_block = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_len=12, block_density=0.9
+        )
+
+        assert (
+            _average_missing_run_length(mask_block)
+            > _average_missing_run_length(mask_pointwise)
+        )
 
 
 class TestReproducibility:
