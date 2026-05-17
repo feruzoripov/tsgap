@@ -59,7 +59,7 @@ simulation for time-series data. Its core design contribution is the explicit
 separation of *mechanisms* (why data is missing) from *patterns* (how data is
 missing) as two orthogonal, independently configurable axes. This enables
 researchers to systematically evaluate imputation methods across realistic
-combinations--for example, testing whether an algorithm that performs well under
+combinations, for example, testing whether an algorithm that performs well under
 random scattered missingness also handles activity-dependent sensor dropout or
 gradual sensor degradation.
 
@@ -76,9 +76,12 @@ degradation), or intermittent bursts (flickering connections).
 Existing tools address these concerns only partially.
 The `ampute` function in the R package `mice` [@vanbuuren2011mice] provides
 multivariate amputation but lacks temporal pattern awareness. PyGrinder
-[@du2023pypots] implements MCAR, MAR, and MNAR in Python but conflates
-mechanisms with patterns and does not offer rate calibration for non-MCAR
-mechanisms. Most published imputation benchmarks
+[@du2023pypots] implements Python-native MCAR, MAR, MNAR, and selected
+sequential or block missingness generators, but exposes them as separate
+functions rather than as one mechanism--pattern composition API. Its
+documentation also notes that some final missing rates, such as MCAR with
+pre-existing missing values and block missingness, are not strictly controlled.
+Most published imputation benchmarks
 [@cao2018brits; @du2023saits; @fortuin2020gpvae] use ad-hoc MCAR-only masking,
 providing no control over temporal structure and no support for MAR or MNAR
 evaluation. A detailed comparison with these tools is provided in the State of
@@ -115,13 +118,13 @@ dropout, or other time-dependent structures--and is unavailable in Python, which
 limits its use in deep learning imputation pipelines that are predominantly
 Python-based.
 
-PyGrinder [@du2023pypots] provides Python-native MCAR, MAR, and MNAR generation
-as part of the PyPOTS ecosystem. However, it conflates mechanisms with patterns
-(e.g., its "block missing" is MCAR-only) and does not offer rate calibration for
-MAR or MNAR, making controlled experiments at specific missing rates difficult.
-Contributing temporal patterns to PyGrinder would require restructuring its API
-around the mechanism--pattern separation that is central to `tsgap`'s design, as
-the two libraries are built on fundamentally different abstractions.
+PyGrinder [@du2023pypots] provides Python-native MCAR, MAR, MNAR, sequential,
+and block-missing generators as part of the PyPOTS ecosystem. However, these are
+separate generator functions with different parameterizations and rate-control
+semantics. `tsgap` instead exposes mechanism and pattern as orthogonal arguments
+to one API, so the same MCAR, MAR, or MNAR mechanism can be evaluated under any
+supported temporal pattern while preserving target-feature constraints and
+pre-existing missing values.
 
 The most common practice in imputation benchmarks remains ad-hoc masking with
 `numpy.random` [@cao2018brits; @du2023saits; @fortuin2020gpvae], which typically
@@ -134,11 +137,12 @@ reproducibility guarantees beyond manual seed management.
 |---------|:-:|:-:|:-:|:-:|
 | MCAR / MAR / MNAR | $\checkmark$ | $\checkmark$ | $\checkmark$ | MCAR only |
 | Mechanism--pattern separation | $\checkmark$ | $\times$ | $\times$ | $\times$ |
-| Block pattern | $\checkmark$ | $\times$ | $\times$ | Rare |
+| Block pattern | $\checkmark$ | $\checkmark$ | $\times$ | Rare |
 | Monotone pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ |
 | Temporal decay pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ |
 | Markov chain pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ |
-| Rate calibration (MAR/MNAR) | $\checkmark$ | $\times$ | Partial | $\times$ |
+| Unified mechanism--pattern API | $\checkmark$ | $\times$ | $\times$ | $\times$ |
+| Target-rate control over eligible entries | $\checkmark$ | Partial | Partial | $\times$ |
 | Weighted multi-driver | $\checkmark$ | $\times$ | $\checkmark$ | $\times$ |
 | 3D $(N, T, D)$ native | $\checkmark$ | $\times$ | $\times$ | $\times$ |
 | Python | $\checkmark$ | $\checkmark$ | $\times$ (R) | $\checkmark$ |
@@ -177,7 +181,8 @@ missing, stays missing), *temporal decay* (missingness increases over time via a
 sigmoid ramp), and *Markov chain* (a 2-state chain per series with transition
 probabilities calibrated from the stationary distribution). Patterns receive the
 mechanism's binary mask and redistribute its missing positions according to the
-desired temporal structure, preserving the total missing count.
+desired temporal structure while preserving pre-existing missing values,
+target-feature eligibility, and consistency between the returned data and mask.
 
 **Core API** (`core.py`) composes mechanisms and patterns through a single entry
 point:
@@ -207,26 +212,32 @@ without reliance on global RNG state.
 of time-series imputation algorithms to different missingness structures. By providing standardized, reproducible missingness
 generation across all mechanism--pattern combinations, `tsgap` enables
 researchers to systematically benchmark both existing and future imputation
-methods--including statistical, machine learning, and deep learning
-approaches--under controlled and realistic conditions. This addresses a
+methods, including statistical, machine learning, and deep learning
+approaches, under controlled and realistic conditions. This addresses a
 recognized gap in the imputation literature, where evaluations are typically
 limited to MCAR-only masking at low missing rates
 [@kazijevs2023deep; @cao2018brits]. The library is pip-installable
-(`pip install tsgap`), includes comprehensive documentation with mathematical
-descriptions of all mechanisms and patterns, and provides 77 automated tests
-covering all mechanism--pattern combinations, edge cases, extreme rate
-calibration accuracy (1%--90%), numerical stability, and reproducibility
-verification. The test suite runs in under 0.4 seconds. The package is released
-under the MIT license and hosted on GitHub with an open issue tracker to
-facilitate community adoption and contribution.
+(`pip install tsgap`), includes focused documentation with mathematical
+descriptions of all mechanisms and patterns, and provides a runnable imputation
+benchmark comparing simple baselines across representative missingness
+scenarios. Its 103 automated tests cover mechanism--pattern combinations, edge
+cases, extreme rate calibration accuracy (1%--90%), numerical stability,
+reproducibility, eligibility guarantees, and behavioral checks such as MAR
+direction, MNAR tail targeting, block run lengths, decay timing, and Markov
+burst persistence. Continuous integration runs on Python 3.9--3.13 with Ruff
+linting and coverage reporting. The package is released under the MIT license
+and hosted on GitHub with an open issue tracker to facilitate community adoption
+and contribution.
 
 # AI Usage Disclosure
 
-Generative AI (Claude Opus 4.6, Anthropic) was used to assist with code
-generation during the development of `tsgap`. All AI-generated code was carefully
-reviewed, tested, and validated by the authors to ensure correctness and
-adherence to the library's design principles. The authors assume full
-responsibility for the final implementation.
+Generative AI tools, including Claude Opus 4.6 (Anthropic) and OpenAI
+Codex/ChatGPT, were used to assist with code review, test generation,
+documentation organization, and manuscript drafting during the development of
+`tsgap`. All AI-assisted code and text were reviewed, tested, and validated by
+the authors to ensure correctness and adherence to the library's design
+principles. The authors assume full responsibility for the final implementation
+and manuscript.
 
 # Acknowledgements
 
