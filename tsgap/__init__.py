@@ -12,7 +12,7 @@ from .core import MissingnessSimulator, simulate_many_rates, simulate_missingnes
 from .mechanisms import MECHANISMS
 from .patterns import PATTERNS
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "simulate_missingness",
     "simulate_many_rates",

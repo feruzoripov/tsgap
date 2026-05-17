@@ -1,5 +1,28 @@
 # Changelog
 
+## Version 0.4.0 - JOSS Readiness and Pattern Reliability
+
+### Bug Fixes
+
+- Preserve pre-existing NaNs across all missingness patterns
+- Respect `target` dimensions across block, monotone, decay, and Markov patterns
+- Keep `X_missing` and returned `mask` consistent for non-pointwise patterns
+
+### Documentation and Examples
+
+- Add focused documentation pages for installation, concepts, mechanisms, patterns, API usage, and benchmarking
+- Add a runnable imputation benchmark example in `examples/benchmark_imputation.py`
+- Add and update JOSS paper draft materials under `paper/`
+
+### Testing and Tooling
+
+- Expand behavioral tests for MAR direction, MNAR value targeting, block run lengths, decay timing, and Markov bursts
+- Increase the test suite to 103 tests
+- Add Ruff linting configuration
+- Add coverage reporting and Python 3.9-3.13 CI coverage
+
+---
+
 ## Version 0.1.1 - Critical Fixes
 
 ### Critical Bug Fixes
