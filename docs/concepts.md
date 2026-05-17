@@ -70,3 +70,13 @@ X_missing, mask = simulate_missingness(
     X, "mcar", 0.2, seed=42, target=[1, 3], pattern="block"
 )
 ```
+
+## Behavioral Test Coverage
+
+The test suite checks both API invariants and statistical behavior, including:
+
+- MAR positive and negative driver directions
+- MNAR high, low, and extreme value targeting
+- block patterns producing longer missing runs than pointwise patterns
+- decay patterns shifting missingness later in time
+- Markov persistence increasing burst lengths
