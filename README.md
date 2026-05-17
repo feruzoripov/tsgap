@@ -103,6 +103,12 @@ mae = np.mean(np.abs(X[missing_idx] - X_imputed[missing_idx]))
 
 See [docs/benchmarking.md](docs/benchmarking.md) for a complete baseline workflow.
 
+The repository also includes a runnable benchmark example:
+
+```bash
+python examples/benchmark_imputation.py
+```
+
 ## Testing
 
 ```bash
