@@ -8,7 +8,7 @@ Separates two concepts:
 2. PATTERNS (how data is missing): pointwise, block, monotone, decay, markov
 """
 
-from .core import simulate_missingness, simulate_many_rates, MissingnessSimulator
+from .core import MissingnessSimulator, simulate_many_rates, simulate_missingness
 from .mechanisms import MECHANISMS
 from .patterns import PATTERNS
 

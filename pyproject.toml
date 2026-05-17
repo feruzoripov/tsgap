@@ -42,6 +42,7 @@ dependencies = [
 dev = [
     "pytest>=6.0",
     "pytest-cov",
+    "ruff>=0.4.0",
 ]
 
 [project.urls]
@@ -51,3 +52,13 @@ Issues = "https://github.com/feruzoripov/tsgap/issues"
 
 [tool.setuptools.packages.find]
 include = ["tsgap*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tsgap/tests"]

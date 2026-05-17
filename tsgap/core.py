@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+
 from .mechanisms import MECHANISMS, _get_eligible_mask
 from .patterns import PATTERNS
 

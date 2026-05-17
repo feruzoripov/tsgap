@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from tsgap import simulate_missingness, simulate_many_rates, MissingnessSimulator
+
+from tsgap import MissingnessSimulator, simulate_many_rates, simulate_missingness
 
 
 def _average_missing_run_length(mask):
