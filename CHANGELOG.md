@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## Version 0.6.0 - Variable-Length Block Missingness
 
 ### Added
 
 - Support `(min_frac, max_frac)` ranges for `block_frac` to sample variable-length block missingness episodes.
+- Document that `block_len=10` remains the default while `block_frac` is recommended for long time series.
 
 ---
 
