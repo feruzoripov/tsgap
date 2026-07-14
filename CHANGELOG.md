@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Change block pattern default `block_density` from `0.7` to `1.0` so `pattern="block"` produces block-only missingness unless mixed pointwise gaps are requested.
+
+---
+
 ## Version 0.6.0 - Variable-Length Block Missingness
 
 ### Added

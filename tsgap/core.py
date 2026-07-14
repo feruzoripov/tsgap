@@ -87,8 +87,9 @@ def simulate_missingness(
                 If a tuple is provided, a new fraction is sampled uniformly
                 from (min_frac, max_frac) for each block. If provided,
                 overrides block_len. Recommended for long time series.
-            block_density : float, default=0.7
-                Fraction of missingness in blocks (0.0 to 1.0)
+            block_density : float, default=1.0
+                Fraction of missingness in blocks (0.0 to 1.0). Set below
+                1.0 to keep some pointwise missing values.
         
         Decay pattern:
             decay_rate : float, default=3.0

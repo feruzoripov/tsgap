@@ -316,6 +316,19 @@ class TestBlockMissingness:
         actual_rate = (~mask).sum() / mask.size
         assert abs(actual_rate - 0.20) < 0.05
 
+    def test_block_frac_range_default_produces_real_blocks_for_long_series(self):
+        """Default block_density should avoid mostly pointwise gaps."""
+        X = np.random.default_rng(42).standard_normal((30000, 1))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.10, seed=42,
+            pattern="block", block_frac=(0.02, 0.10)
+        )
+
+        run_lengths = _missing_run_lengths(mask)
+        assert np.median(run_lengths) >= 600
+        assert np.percentile(run_lengths, 95) >= 600
+
 
 class TestReproducibility:
     """Test seed reproducibility."""

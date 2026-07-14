@@ -53,7 +53,8 @@ X_miss, mask = simulate_missingness(
 )
 
 # Scale block length to the sequence length for long series
-# The default block pattern uses block_len=10; block_frac is recommended
+# The default block pattern uses block_len=10 and block_density=1.0.
+# block_frac is recommended
 # for long wearable-style series where fixed 10-sample blocks are too short.
 X_miss, mask = simulate_missingness(
     X, "mcar", 0.20, seed=42,

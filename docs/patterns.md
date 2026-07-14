@@ -23,13 +23,14 @@ connectivity loss.
 ```python
 X_missing, mask = simulate_missingness(
     X, "mcar", 0.20, seed=42,
-    pattern="block", block_len=10, block_density=0.7
+    pattern="block", block_len=10
 )
 ```
 
-By default, the block pattern uses a fixed `block_len=10`. For long
-wearable-style time series, prefer `block_frac` to define block length relative
-to the time axis:
+By default, the block pattern uses a fixed `block_len=10` and
+`block_density=1.0`, so all requested missingness is allocated to blocks. For
+long wearable-style time series, prefer `block_frac` to define block length
+relative to the time axis:
 
 ```python
 X_missing, mask = simulate_missingness(
@@ -58,7 +59,7 @@ Parameters:
 |-----------|---------|-------------|
 | `block_len` | `10` | Length of each block in timesteps |
 | `block_frac` | `None` | Relative block length as a fraction of the time axis, or `(min_frac, max_frac)` for variable-length blocks. Recommended for long time series. |
-| `block_density` | `0.7` | Fraction of missingness allocated to blocks |
+| `block_density` | `1.0` | Fraction of missingness allocated to blocks. Set below `1.0` to retain some pointwise missingness. |
 
 Alias: `contiguous`.
 
