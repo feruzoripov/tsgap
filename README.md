@@ -1,5 +1,7 @@
 # TSGap
 
+[![DOI](https://zenodo.org/badge/1163640402.svg)](https://doi.org/10.5281/zenodo.21365453)
+
 A Python library for simulating realistic missingness in time-series data for imputation benchmarking.
 
 TSGap separates **mechanisms** (why data is missing: MCAR, MAR, MNAR) from
