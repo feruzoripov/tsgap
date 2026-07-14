@@ -149,7 +149,7 @@ def apply_block_pattern(
     shape: tuple[int, ...],
     block_len: int = 10,
     block_frac: BlockFrac | None = None,
-    block_density: float = 0.7,
+    block_density: float = 1.0,
     eligible_mask: np.ndarray | None = None,
     forced_missing: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
