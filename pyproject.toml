@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tsgap"
-version = "0.6.0"
+version = "0.6.1"
 description = "Composable time-series missingness simulation for imputation benchmarking"
 readme = "README.md"
 license = "MIT"
