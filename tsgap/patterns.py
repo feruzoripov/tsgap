@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Tuple, Union
+
 import numpy as np
 
-BlockFrac = float | tuple[float, float]
+BlockFrac = Union[float, Tuple[float, float]]
 
 
 def _pattern_context(
