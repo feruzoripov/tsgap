@@ -41,12 +41,22 @@ For a series with 30,000 timesteps, `block_frac=0.01` creates blocks of about
 300 timesteps. If both `block_len` and `block_frac` are provided, `block_frac`
 takes precedence.
 
+To simulate variable-length dropout episodes, pass a `(min_frac, max_frac)`
+range. A new block length is sampled uniformly from the range for each block:
+
+```python
+X_missing, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="block", block_frac=(0.01, 0.05)
+)
+```
+
 Parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `block_len` | `10` | Length of each block in timesteps |
-| `block_frac` | `None` | Relative block length as a fraction of the time axis |
+| `block_frac` | `None` | Relative block length as a fraction of the time axis, or `(min_frac, max_frac)` for variable-length blocks |
 | `block_density` | `0.7` | Fraction of missingness allocated to blocks |
 
 Alias: `contiguous`.

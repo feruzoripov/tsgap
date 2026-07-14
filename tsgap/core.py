@@ -82,9 +82,11 @@ def simulate_missingness(
         Block pattern:
             block_len : int, default=10
                 Length of each missing block (in timesteps)
-            block_frac : float, optional
+            block_frac : float or tuple[float, float], optional
                 Relative block length as fraction of time axis (0.0, 1.0].
-                If provided, overrides block_len.
+                If a tuple is provided, a new fraction is sampled uniformly
+                from (min_frac, max_frac) for each block. If provided,
+                overrides block_len.
             block_density : float, default=0.7
                 Fraction of missingness in blocks (0.0 to 1.0)
         

@@ -58,6 +58,12 @@ X_miss, mask = simulate_missingness(
     pattern="block", block_frac=0.01
 )
 
+# Sample each block length between 1% and 5% of the time axis
+X_miss, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="block", block_frac=(0.01, 0.05)
+)
+
 # MNAR: extreme values missing with monotone dropout
 X_miss, mask = simulate_missingness(
     X, "mnar", 0.20, seed=42,
