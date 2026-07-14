@@ -52,6 +52,7 @@ Pattern parameters:
 | Parameter | Patterns | Default | Description |
 |-----------|----------|---------|-------------|
 | `block_len` | block | `10` | Block length in timesteps |
+| `block_frac` | block | `None` | Relative block length as a fraction of the time axis |
 | `block_density` | block | `0.7` | Fraction of missingness in blocks |
 | `decay_rate` | decay | `3.0` | Decay ramp steepness |
 | `decay_center` | decay | `0.7` | Normalized ramp center |

@@ -39,6 +39,28 @@ def _finalize_pattern_mask(
     return finalized
 
 
+def _resolve_block_len(
+    shape: tuple[int, ...],
+    block_len: int,
+    block_frac: float | None = None,
+) -> int:
+    """Resolve absolute block length from block_len or block_frac."""
+    if len(shape) == 2:
+        T = shape[0]
+    else:
+        T = shape[1]
+
+    if block_frac is not None:
+        if not 0.0 < block_frac <= 1.0:
+            raise ValueError("block_frac must be in (0.0, 1.0]")
+        block_len = int(np.round(T * block_frac))
+
+    if block_len < 1:
+        raise ValueError("block_len must be >= 1")
+
+    return min(block_len, T)
+
+
 def apply_pointwise_pattern(
     mask: np.ndarray,
     shape: tuple[int, ...] | None = None,
@@ -71,6 +93,7 @@ def apply_block_pattern(
     mask: np.ndarray,
     shape: tuple[int, ...],
     block_len: int = 10,
+    block_frac: float | None = None,
     block_density: float = 0.7,
     eligible_mask: np.ndarray | None = None,
     forced_missing: np.ndarray | None = None,
@@ -90,6 +113,9 @@ def apply_block_pattern(
         Shape of the data
     block_len : int
         Length of each missing block (in time steps)
+    block_frac : float, optional
+        Relative block length as a fraction of the time axis (0.0, 1.0].
+        If provided, overrides block_len.
     block_density : float
         Fraction of total missingness allocated to blocks (0.0 to 1.0)
     rng : np.random.Generator, optional
@@ -107,8 +133,7 @@ def apply_block_pattern(
         mask, eligible_mask, forced_missing
     )
 
-    if block_len < 1:
-        raise ValueError("block_len must be >= 1")
+    block_len = _resolve_block_len(shape, block_len, block_frac)
     if not 0.0 <= block_density <= 1.0:
         raise ValueError("block_density must be between 0.0 and 1.0")
     
