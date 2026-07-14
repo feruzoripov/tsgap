@@ -231,6 +231,49 @@ class TestBlockMissingness:
             > _average_missing_run_length(mask_pointwise)
         )
 
+    def test_block_frac_scales_with_time_axis(self):
+        """block_frac should make block length relative to sequence length."""
+        X = np.random.default_rng(42).standard_normal((1000, 3))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_frac=0.05, block_density=1.0
+        )
+
+        # A 5% block fraction on T=1000 should produce long contiguous runs.
+        assert _average_missing_run_length(mask) > 10
+
+    def test_block_frac_works_with_3d_data(self):
+        """block_frac should use the time dimension for 3D arrays."""
+        X = np.random.default_rng(42).standard_normal((4, 500, 3))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_frac=0.04, block_density=1.0
+        )
+
+        assert mask.shape == X.shape
+        actual_rate = (~mask).sum() / mask.size
+        assert abs(actual_rate - 0.20) < 0.05
+
+    def test_block_frac_overrides_block_len(self):
+        """block_frac should take precedence over block_len when both are set."""
+        X = np.random.default_rng(42).standard_normal((1000, 3))
+
+        _, mask_short = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_len=5, block_density=1.0
+        )
+        _, mask_relative = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_len=5, block_frac=0.05, block_density=1.0
+        )
+
+        assert (
+            _average_missing_run_length(mask_relative)
+            > _average_missing_run_length(mask_short)
+        )
+
 
 class TestReproducibility:
     """Test seed reproducibility."""
@@ -574,6 +617,16 @@ class TestPatternAPI:
         with pytest.raises(ValueError, match="block_len must be >= 1"):
             simulate_missingness(
                 X, "mcar", 0.15, pattern="block", block_len=0
+            )
+
+    @pytest.mark.parametrize("block_frac", [0.0, -0.1, 1.1])
+    def test_invalid_block_frac(self, block_frac):
+        """Should raise error for invalid relative block length."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="block_frac must be"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="block", block_frac=block_frac
             )
 
     def test_invalid_decay_parameters(self):

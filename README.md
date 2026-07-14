@@ -52,6 +52,12 @@ X_miss, mask = simulate_missingness(
     pattern="block", driver_dims=[0], block_len=10
 )
 
+# Scale block length to the sequence length for long series
+X_miss, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="block", block_frac=0.01
+)
+
 # MNAR: extreme values missing with monotone dropout
 X_miss, mask = simulate_missingness(
     X, "mnar", 0.20, seed=42,

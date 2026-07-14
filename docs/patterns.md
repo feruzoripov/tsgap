@@ -27,11 +27,26 @@ X_missing, mask = simulate_missingness(
 )
 ```
 
+For long time series, use `block_frac` to define block length relative to the
+time axis:
+
+```python
+X_missing, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="block", block_frac=0.01
+)
+```
+
+For a series with 30,000 timesteps, `block_frac=0.01` creates blocks of about
+300 timesteps. If both `block_len` and `block_frac` are provided, `block_frac`
+takes precedence.
+
 Parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `block_len` | `10` | Length of each block in timesteps |
+| `block_frac` | `None` | Relative block length as a fraction of the time axis |
 | `block_density` | `0.7` | Fraction of missingness allocated to blocks |
 
 Alias: `contiguous`.

@@ -82,6 +82,9 @@ def simulate_missingness(
         Block pattern:
             block_len : int, default=10
                 Length of each missing block (in timesteps)
+            block_frac : float, optional
+                Relative block length as fraction of time axis (0.0, 1.0].
+                If provided, overrides block_len.
             block_density : float, default=0.7
                 Fraction of missingness in blocks (0.0 to 1.0)
         
@@ -112,6 +115,12 @@ def simulate_missingness(
     >>> X_missing, mask = simulate_missingness(
     ...     X, "mar", 0.25, seed=42,
     ...     driver_dims=[0], pattern="block", block_len=10
+    ... )
+
+    >>> # Block length can also scale with the time axis
+    >>> X_missing, mask = simulate_missingness(
+    ...     X, "mcar", 0.20, seed=42,
+    ...     pattern="block", block_frac=0.02
     ... )
     
     >>> # MNAR with block pattern (extreme values cause sensor failure)
