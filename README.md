@@ -139,6 +139,8 @@ pytest tsgap/tests/ -v
   author = {Oripov, Feruz and Korchagina, Kseniia and Bonsu, Enock Adu and Bilgin, Ali and Aras, Shravan},
   title = {TSGap: A Python Library for Composable Time-Series Missingness Simulation},
   year = {2026},
+  version = {0.6.1},
+  doi = {10.5281/zenodo.21365453},
   url = {https://github.com/feruzoripov/tsgap}
 }
 ```
