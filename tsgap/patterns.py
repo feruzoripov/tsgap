@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Tuple, Union
+
 import numpy as np
+
+BlockFrac = Union[float, Tuple[float, float]]
 
 
 def _pattern_context(
@@ -42,7 +46,7 @@ def _finalize_pattern_mask(
 def _resolve_block_len(
     shape: tuple[int, ...],
     block_len: int,
-    block_frac: float | None = None,
+    block_frac: BlockFrac | None = None,
 ) -> int:
     """Resolve absolute block length from block_len or block_frac."""
     if len(shape) == 2:
@@ -51,14 +55,65 @@ def _resolve_block_len(
         T = shape[1]
 
     if block_frac is not None:
-        if not 0.0 < block_frac <= 1.0:
-            raise ValueError("block_frac must be in (0.0, 1.0]")
-        block_len = int(np.round(T * block_frac))
+        if isinstance(block_frac, tuple):
+            block_len = _block_len_from_frac(T, block_frac[1])
+        else:
+            block_len = _block_len_from_frac(T, block_frac)
 
     if block_len < 1:
         raise ValueError("block_len must be >= 1")
 
     return min(block_len, T)
+
+
+def _validate_block_frac(block_frac: object | None) -> BlockFrac | None:
+    """Validate and normalize scalar or ranged block_frac values."""
+    if block_frac is None:
+        return None
+
+    if np.isscalar(block_frac):
+        try:
+            frac = float(block_frac)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("block_frac must be a float or a length-2 range") from exc
+        if not 0.0 < frac <= 1.0:
+            raise ValueError("block_frac must be in (0.0, 1.0]")
+        return frac
+
+    try:
+        frac_min, frac_max = block_frac
+    except (TypeError, ValueError) as exc:
+        raise ValueError("block_frac must be a float or a length-2 range") from exc
+
+    try:
+        frac_min = float(frac_min)
+        frac_max = float(frac_max)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("block_frac range values must be numeric") from exc
+
+    if not 0.0 < frac_min <= frac_max <= 1.0:
+        raise ValueError("block_frac range must satisfy 0.0 < min <= max <= 1.0")
+
+    return frac_min, frac_max
+
+
+def _block_len_from_frac(T: int, block_frac: float) -> int:
+    """Convert a relative block length to an absolute length."""
+    return min(max(1, int(np.round(T * block_frac))), T)
+
+
+def _sample_block_len(
+    T: int,
+    block_len: int,
+    block_frac: BlockFrac | None,
+    rng: np.random.Generator,
+) -> int:
+    """Sample the next block length from fixed or ranged parameters."""
+    if block_frac is None:
+        return block_len
+    if isinstance(block_frac, tuple):
+        block_frac = rng.uniform(block_frac[0], block_frac[1])
+    return _block_len_from_frac(T, block_frac)
 
 
 def apply_pointwise_pattern(
@@ -93,7 +148,7 @@ def apply_block_pattern(
     mask: np.ndarray,
     shape: tuple[int, ...],
     block_len: int = 10,
-    block_frac: float | None = None,
+    block_frac: BlockFrac | None = None,
     block_density: float = 0.7,
     eligible_mask: np.ndarray | None = None,
     forced_missing: np.ndarray | None = None,
@@ -113,9 +168,11 @@ def apply_block_pattern(
         Shape of the data
     block_len : int
         Length of each missing block (in time steps)
-    block_frac : float, optional
+    block_frac : float or tuple[float, float], optional
         Relative block length as a fraction of the time axis (0.0, 1.0].
-        If provided, overrides block_len.
+        If a tuple is provided, a new fraction is sampled uniformly from
+        ``(min_frac, max_frac)`` for each block. If provided, overrides
+        block_len.
     block_density : float
         Fraction of total missingness allocated to blocks (0.0 to 1.0)
     rng : np.random.Generator, optional
@@ -133,6 +190,7 @@ def apply_block_pattern(
         mask, eligible_mask, forced_missing
     )
 
+    block_frac = _validate_block_frac(block_frac)
     block_len = _resolve_block_len(shape, block_len, block_frac)
     if not 0.0 <= block_density <= 1.0:
         raise ValueError("block_density must be between 0.0 and 1.0")
@@ -175,7 +233,8 @@ def apply_block_pattern(
     # Add block missingness
     if n_block_missing > 0:
         new_mask = _add_blocks(
-            new_mask, shape, block_len, n_block_missing, rng, eligible_mask
+            new_mask, shape, block_len, n_block_missing, rng, eligible_mask,
+            block_frac=block_frac
         )
     
     return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
@@ -187,7 +246,8 @@ def _add_blocks(
     block_len: int,
     n_target: int,
     rng: np.random.Generator,
-    eligible_mask: np.ndarray
+    eligible_mask: np.ndarray,
+    block_frac: BlockFrac | None = None,
 ) -> np.ndarray:
     """Add contiguous missing blocks to mask."""
     
@@ -219,8 +279,9 @@ def _add_blocks(
         
         # Randomly select eligible sample/dimension and start time
         n_idx, d_idx = eligible_series[rng.integers(0, len(eligible_series))]
-        t_start = rng.integers(0, max(1, T - block_len + 1))
-        t_end = min(t_start + block_len, T)
+        current_block_len = _sample_block_len(T, block_len, block_frac, rng)
+        t_start = rng.integers(0, max(1, T - current_block_len + 1))
+        t_end = min(t_start + current_block_len, T)
         
         # Limit block length to not overshoot target
         remaining = n_target - n_added
