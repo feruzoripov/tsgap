@@ -1,5 +1,24 @@
 # Changelog
 
+## Version 0.5.0 - Scale-Aware Block Missingness
+
+### Added
+
+- Add `block_frac` for relative block lengths based on the time axis
+- Support `block_frac` for both 2D `(T, D)` and 3D `(N, T, D)` arrays
+- Add validation for invalid `block_frac` values
+- Document `block_frac` in README, API docs, and pattern docs
+
+### Changed
+
+- Update benchmark example to use scale-aware block missingness
+
+### Testing
+
+- Add tests for `block_frac` scaling, 3D behavior, precedence over `block_len`, and validation
+
+---
+
 ## Version 0.4.0 - JOSS Readiness and Pattern Reliability
 
 ### Bug Fixes

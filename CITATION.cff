@@ -13,8 +13,8 @@ authors:
   - family-names: "Aras"
     given-names: "Shravan"
 title: "TSGap: A Python Library for Composable Time-Series Missingness Simulation"
-version: 0.4.0
-date-released: 2026-05-17
+version: 0.5.0
+date-released: 2026-07-14
 url: "https://github.com/feruzoripov/tsgap"
 license: MIT
 repository-code: "https://github.com/feruzoripov/tsgap"
