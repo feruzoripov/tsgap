@@ -1,5 +1,65 @@
 # Changelog
 
+## Version 0.6.1 - Block-Only Default Missingness
+
+### Changed
+
+- Change block pattern default `block_density` from `0.7` to `1.0` so `pattern="block"` produces block-only missingness unless mixed pointwise gaps are requested.
+- Regenerate block-pattern figures to show contiguous block missingness with `block_frac=(0.02, 0.10)`.
+
+---
+
+## Version 0.6.0 - Variable-Length Block Missingness
+
+### Added
+
+- Support `(min_frac, max_frac)` ranges for `block_frac` to sample variable-length block missingness episodes.
+- Document that `block_len=10` remains the default while `block_frac` is recommended for long time series.
+
+---
+
+## Version 0.5.0 - Scale-Aware Block Missingness
+
+### Added
+
+- Add `block_frac` for relative block lengths based on the time axis
+- Support `block_frac` for both 2D `(T, D)` and 3D `(N, T, D)` arrays
+- Add validation for invalid `block_frac` values
+- Document `block_frac` in README, API docs, and pattern docs
+
+### Changed
+
+- Update benchmark example to use scale-aware block missingness
+
+### Testing
+
+- Add tests for `block_frac` scaling, 3D behavior, precedence over `block_len`, and validation
+
+---
+
+## Version 0.4.0 - JOSS Readiness and Pattern Reliability
+
+### Bug Fixes
+
+- Preserve pre-existing NaNs across all missingness patterns
+- Respect `target` dimensions across block, monotone, decay, and Markov patterns
+- Keep `X_missing` and returned `mask` consistent for non-pointwise patterns
+
+### Documentation and Examples
+
+- Add focused documentation pages for installation, concepts, mechanisms, patterns, API usage, and benchmarking
+- Add a runnable imputation benchmark example in `examples/benchmark_imputation.py`
+- Add and update JOSS paper draft materials under `paper/`
+
+### Testing and Tooling
+
+- Expand behavioral tests for MAR direction, MNAR value targeting, block run lengths, decay timing, and Markov bursts
+- Increase the test suite to 103 tests
+- Add Ruff linting configuration
+- Add coverage reporting and Python 3.9-3.13 CI coverage
+
+---
+
 ## Version 0.1.1 - Critical Fixes
 
 ### Critical Bug Fixes

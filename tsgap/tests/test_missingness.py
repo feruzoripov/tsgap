@@ -23,6 +23,23 @@ def _average_missing_run_length(mask):
     return np.mean(lengths) if lengths else 0.0
 
 
+def _missing_run_lengths(mask):
+    """Return contiguous missing run lengths in a 2D mask."""
+    lengths = []
+    for d in range(mask.shape[-1]):
+        run = 0
+        for is_missing in ~mask[:, d]:
+            if is_missing:
+                run += 1
+            else:
+                if run > 0:
+                    lengths.append(run)
+                run = 0
+        if run > 0:
+            lengths.append(run)
+    return lengths
+
+
 class TestMCAR:
     """Test MCAR mechanism."""
     
@@ -230,6 +247,87 @@ class TestBlockMissingness:
             _average_missing_run_length(mask_block)
             > _average_missing_run_length(mask_pointwise)
         )
+
+    def test_block_frac_scales_with_time_axis(self):
+        """block_frac should make block length relative to sequence length."""
+        X = np.random.default_rng(42).standard_normal((1000, 3))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_frac=0.05, block_density=1.0
+        )
+
+        # A 5% block fraction on T=1000 should produce long contiguous runs.
+        assert _average_missing_run_length(mask) > 10
+
+    def test_block_frac_works_with_3d_data(self):
+        """block_frac should use the time dimension for 3D arrays."""
+        X = np.random.default_rng(42).standard_normal((4, 500, 3))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_frac=0.04, block_density=1.0
+        )
+
+        assert mask.shape == X.shape
+        actual_rate = (~mask).sum() / mask.size
+        assert abs(actual_rate - 0.20) < 0.05
+
+    def test_block_frac_overrides_block_len(self):
+        """block_frac should take precedence over block_len when both are set."""
+        X = np.random.default_rng(42).standard_normal((1000, 3))
+
+        _, mask_short = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_len=5, block_density=1.0
+        )
+        _, mask_relative = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_len=5, block_frac=0.05, block_density=1.0
+        )
+
+        assert (
+            _average_missing_run_length(mask_relative)
+            > _average_missing_run_length(mask_short)
+        )
+
+    def test_block_frac_range_samples_variable_block_lengths(self):
+        """block_frac ranges should produce variable-length blocks."""
+        X = np.random.default_rng(42).standard_normal((1200, 8))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.25, seed=42,
+            pattern="block", block_frac=(0.01, 0.08), block_density=1.0
+        )
+
+        run_lengths = _missing_run_lengths(mask)
+        assert max(run_lengths) - min(run_lengths) > 20
+
+    def test_block_frac_range_works_with_3d_data(self):
+        """block_frac ranges should use the time dimension for 3D arrays."""
+        X = np.random.default_rng(42).standard_normal((3, 600, 4))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="block", block_frac=(0.02, 0.06), block_density=1.0
+        )
+
+        assert mask.shape == X.shape
+        actual_rate = (~mask).sum() / mask.size
+        assert abs(actual_rate - 0.20) < 0.05
+
+    def test_block_frac_range_default_produces_real_blocks_for_long_series(self):
+        """Default block_density should avoid mostly pointwise gaps."""
+        X = np.random.default_rng(42).standard_normal((30000, 1))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.10, seed=42,
+            pattern="block", block_frac=(0.02, 0.10)
+        )
+
+        run_lengths = _missing_run_lengths(mask)
+        assert np.median(run_lengths) >= 600
+        assert np.percentile(run_lengths, 95) >= 600
 
 
 class TestReproducibility:
@@ -574,6 +672,29 @@ class TestPatternAPI:
         with pytest.raises(ValueError, match="block_len must be >= 1"):
             simulate_missingness(
                 X, "mcar", 0.15, pattern="block", block_len=0
+            )
+
+    @pytest.mark.parametrize("block_frac", [0.0, -0.1, 1.1])
+    def test_invalid_block_frac(self, block_frac):
+        """Should raise error for invalid relative block length."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="block_frac must be"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="block", block_frac=block_frac
+            )
+
+    @pytest.mark.parametrize(
+        "block_frac",
+        [(0.0, 0.1), (-0.1, 0.1), (0.2, 0.1), (0.1, 1.1), (0.1,), (0.1, 0.2, 0.3)],
+    )
+    def test_invalid_block_frac_range(self, block_frac):
+        """Should raise error for invalid relative block length ranges."""
+        X = np.random.randn(100, 5)
+
+        with pytest.raises(ValueError, match="block_frac"):
+            simulate_missingness(
+                X, "mcar", 0.15, pattern="block", block_frac=block_frac
             )
 
     def test_invalid_decay_parameters(self):

@@ -103,8 +103,8 @@ def run_benchmark(seed: int = 42, missing_rate: float = 0.2) -> list[dict[str, o
 
     scenarios = [
         ("mcar_pointwise", "mcar", "pointwise", {}),
-        ("mcar_block", "mcar", "block", {"block_len": 16, "block_density": 0.8}),
-        ("mar_block", "mar", "block", {"driver_dims": [0], "block_len": 16}),
+        ("mcar_block", "mcar", "block", {"block_frac": 0.03, "block_density": 0.8}),
+        ("mar_block", "mar", "block", {"driver_dims": [0], "block_frac": 0.03}),
         ("mnar_monotone", "mnar", "monotone", {"mnar_mode": "extreme"}),
         ("mcar_decay", "mcar", "decay", {"decay_rate": 5.0, "decay_center": 0.6}),
         ("mcar_markov", "mcar", "markov", {"persist": 0.8}),

@@ -81,9 +81,15 @@ def simulate_missingness(
         
         Block pattern:
             block_len : int, default=10
-                Length of each missing block (in timesteps)
-            block_density : float, default=0.7
-                Fraction of missingness in blocks (0.0 to 1.0)
+                Length of each missing block (in timesteps). Used by default.
+            block_frac : float or tuple[float, float], optional
+                Relative block length as fraction of time axis (0.0, 1.0].
+                If a tuple is provided, a new fraction is sampled uniformly
+                from (min_frac, max_frac) for each block. If provided,
+                overrides block_len. Recommended for long time series.
+            block_density : float, default=1.0
+                Fraction of missingness in blocks (0.0 to 1.0). Set below
+                1.0 to keep some pointwise missing values.
         
         Decay pattern:
             decay_rate : float, default=3.0
@@ -112,6 +118,12 @@ def simulate_missingness(
     >>> X_missing, mask = simulate_missingness(
     ...     X, "mar", 0.25, seed=42,
     ...     driver_dims=[0], pattern="block", block_len=10
+    ... )
+
+    >>> # Block length can also scale with the time axis
+    >>> X_missing, mask = simulate_missingness(
+    ...     X, "mcar", 0.20, seed=42,
+    ...     pattern="block", block_frac=0.02
     ... )
     
     >>> # MNAR with block pattern (extreme values cause sensor failure)

@@ -1,5 +1,7 @@
 # TSGap
 
+[![DOI](https://zenodo.org/badge/1163640402.svg)](https://doi.org/10.5281/zenodo.21365453)
+
 A Python library for simulating realistic missingness in time-series data for imputation benchmarking.
 
 TSGap separates **mechanisms** (why data is missing: MCAR, MAR, MNAR) from
@@ -50,6 +52,21 @@ X_miss, mask = simulate_missingness(X, "mcar", 0.15, seed=42)
 X_miss, mask = simulate_missingness(
     X, "mar", 0.25, seed=42,
     pattern="block", driver_dims=[0], block_len=10
+)
+
+# Scale block length to the sequence length for long series
+# The default block pattern uses block_len=10 and block_density=1.0.
+# block_frac is recommended
+# for long wearable-style series where fixed 10-sample blocks are too short.
+X_miss, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="block", block_frac=0.01
+)
+
+# Sample each block length between 1% and 5% of the time axis
+X_miss, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="block", block_frac=(0.01, 0.05)
 )
 
 # MNAR: extreme values missing with monotone dropout
@@ -122,6 +139,8 @@ pytest tsgap/tests/ -v
   author = {Oripov, Feruz and Korchagina, Kseniia and Bonsu, Enock Adu and Bilgin, Ali and Aras, Shravan},
   title = {TSGap: A Python Library for Composable Time-Series Missingness Simulation},
   year = {2026},
+  version = {0.6.1},
+  doi = {10.5281/zenodo.21365453},
   url = {https://github.com/feruzoripov/tsgap}
 }
 ```
