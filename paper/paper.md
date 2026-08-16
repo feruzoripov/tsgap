@@ -59,10 +59,6 @@ therefore evaluate whether an imputation method that performs well under random
 scattered missingness also handles activity-dependent sensor dropout or gradual
 sensor degradation.
 
-Recent releases add scale-aware block missingness through fractional block
-lengths, including variable-length ranges, so contiguous dropout episodes can be
-defined relative to the sequence length rather than as fixed sample counts.
-
 # Statement of Need
 
 The missing data literature distinguishes three canonical mechanisms
