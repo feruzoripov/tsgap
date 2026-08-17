@@ -18,6 +18,124 @@ mask == True  -> observed
 mask == False -> missing
 ```
 
+## Intuition: A Plain-Language Walkthrough
+
+If you are new to the math, start here. This section explains every idea and
+symbol in everyday language before the formal definitions below.
+
+### The big picture
+
+Imagine a spreadsheet of sensor readings — rows are moments in time, columns are
+different measurements (heart rate, temperature, and so on). TSGap's job is to
+poke "holes" in this spreadsheet on purpose: deleting some values so you can
+later test whether an imputation program can guess them back correctly.
+
+Real data does not lose values randomly, so TSGap pokes holes in *realistic*
+ways. That is what all the math is for. It happens in two steps: first decide
+*which* values disappear (the **mechanism**), then decide *how the gaps are
+shaped over time* (the **pattern**).
+
+### The basic ingredients
+
+- **`X` (your data).** The spreadsheet. Shape `(T, D)` is one subject: `T` rows
+  (timesteps) and `D` columns (features). Shape `(N, T, D)` is `N` subjects
+  stacked together. Two shapes exist because sometimes you study one patient
+  over time, sometimes many patients at once.
+- **`r` (the missing rate).** The fraction of values to delete. `r = 0.15` means
+  "delete 15%." It is forced between 0 and 1 — you cannot delete 150% of your
+  data.
+- **`E` (the eligible set).** The cells we are *allowed* to delete. We exclude
+  cells that are already blank (you cannot delete a blank) and columns you asked
+  to leave alone. We need this so we only measure holes *we* made, not ones that
+  were already there.
+- **`mask` (the answer key).** A true/false grid the same size as the data.
+  `True` = still here, `False` = we deleted it. It tells you exactly which cells
+  you poked out so you can score an imputation method fairly.
+
+### Step 1: Which values to delete (the mechanism)
+
+There are three styles, each a different *reason* data goes missing.
+
+**MCAR — totally random.** Every eligible cell has an equal chance, like drawing
+names from a hat. We compute how many to delete, `m = round(r * |E|)`, then draw
+exactly that many. Here `|E|` is the number of eligible cells. This is exact.
+
+**MAR — missing because of *another* measurement.** Example: a heart-rate sensor
+fails more during hard exercise. The heart rate goes missing, but the *cause* is
+activity level (a column we can still see).
+
+- **`y_t` (driver signal).** We combine one or more "driver" columns into a
+  single number per timestep. With multiple drivers we use weights `w_k` (say
+  activity 80%, temperature 20%). The normalized weights `w̃_k` are just the
+  weights divided by their total so they add up to 1 — this keeps the scale
+  sensible no matter what numbers you type.
+- **`s_t` (normalized signal).** We rescale `y` to have average 0 and spread 1
+  using `s = (y - mean) / std`. The `mean` centers it; the `std` (standard
+  deviation, a measure of spread) puts everything on a common scale. Without
+  this, a heart rate (~70) and a temperature (~37) would not be comparable.
+- **The sigmoid `σ`.** An S-shaped function that squishes any number into a
+  probability between 0 and 1. Big positive input → near 1 (almost surely
+  delete); big negative → near 0 (almost surely keep); 0 → 0.5 (coin flip).
+- **`α` (strength).** How steep the S is — how strongly the driver matters. Big
+  `α` = the driver dramatically changes the odds; small `α` = it barely matters.
+- **`β` (offset).** A knob that slides the S left or right to control the
+  *overall* deletion rate. You do not set it by hand; TSGap finds it
+  automatically (see calibration below).
+- **`base_rate` (floor).** A minimum deletion chance so even "safe" values are
+  not fully protected. It is capped at half the target rate so it never
+  contradicts a low `r`.
+
+**MNAR — missing because of *its own* value.** Example: a thermometer maxes out
+and cannot record extreme heat, so the reading vanishes *because it was too
+high*. We z-score the value itself (`z = (X - mean) / std`) and pick a score:
+`z` targets high values, `-z` targets low values, `|z|` targets both extremes.
+Then the same sigmoid turns the score into a probability.
+
+### Calibration: finding `β` automatically
+
+You want *exactly* 20% missing, but the sigmoid gives whatever it gives. TSGap
+plays "guess the number" (binary search) on `β`: guess a value, check the
+resulting rate, nudge up if too low or down if too high, and keep halving the
+range until it is close. This works because raising `β` always raises the rate,
+so the search always closes in.
+
+### Sampling: flipping the coins
+
+Every eligible cell now has a probability `p`. We draw a random number
+`u` between 0 and 1 and delete the cell if `u ≤ p`. A bigger `p` means a bigger
+"delete zone," so it is more likely to go. Because this is coin-flipping, MAR and
+MNAR hit the target rate *approximately*; MCAR is exact because it draws a fixed
+count instead.
+
+### Step 2: How the gaps are shaped in time (the pattern)
+
+Step 1 chose which cells and how many. Step 2 rearranges them into realistic
+shapes while keeping the same total count.
+
+- **Pointwise.** Do nothing; holes stay scattered like sprinkles.
+- **Block.** Group holes into solid chunks (a sensor offline for 10 minutes).
+  `block_density` sets how many holes go into chunks versus staying scattered;
+  `block_len` sets chunk length in steps; `block_frac` sets it as a fraction of
+  total time (so it scales to long recordings), and a range makes chunk lengths
+  vary.
+- **Monotone.** Once it breaks, it stays broken (a patient drops out for good).
+  The dropout time `τ = T - (missing count for that series)` is the moment a
+  series goes dark forever. Series the mechanism hit harder go dark earlier.
+- **Decay.** Holes grow more common over time (a dying battery). A time weight
+  `w(t) = σ(decay_rate * (t_norm - decay_center))` makes later steps more likely
+  to be chosen. `decay_center` is where failure crosses 50% (0.7 = last 30%);
+  `decay_rate` controls how sharp the drop-off is.
+- **Markov.** Flickering on and off (a loose connection). `persist` is the chance
+  a broken sensor *stays* broken next step (high = long outages). The onset
+  probability (chance a working sensor breaks) is solved automatically so the
+  long-run average matches the target rate.
+
+### Step 3: Finishing up
+
+Cells marked `False` become `NaN` in the output, pre-existing blanks stay blank,
+and using the same `seed` always reproduces the exact same holes. The formal
+definitions of everything above follow in the rest of this page.
+
 ## Notation
 
 Let the input array be either:
