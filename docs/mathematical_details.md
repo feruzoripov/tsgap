@@ -180,6 +180,13 @@ For MAR, TSGap also applies a probability floor:
 p = max(p, base\_rate)
 ```
 
+To prevent the floor from conflicting with low target rates, `base_rate` is
+first capped at half the requested rate:
+
+```math
+base\_rate \leftarrow \min\big(base\_rate,\ \max(10^{-6},\ 0.5\,r)\big)
+```
+
 The probability is broadcast from each timestep to the eligible target features
 at that timestep. Non-eligible entries receive probability zero.
 
@@ -209,8 +216,8 @@ u_i \sim Uniform(0, 1)
 ```math
 mask_i =
 \begin{cases}
-False, & u_i < p_i \\
-True,  & u_i \ge p_i
+False, & u_i \le p_i \\
+True,  & u_i > p_i
 \end{cases}
 ```
 
@@ -259,7 +266,8 @@ So:
 
 ### Logistic Probability And Sampling
 
-MNAR uses the same calibrated sigmoid structure as MAR:
+MNAR uses the same calibrated sigmoid and offset structure as MAR, but without
+the `base_rate` probability floor:
 
 ```math
 p_i = \sigma(\alpha s_i + \beta)
@@ -274,7 +282,7 @@ The offset `beta` is calibrated so:
 Then each eligible entry is sampled independently:
 
 ```math
-mask_i = False \quad \text{if} \quad u_i < p_i
+mask_i = False \quad \text{if} \quad u_i \le p_i
 ```
 
 As with MAR, the achieved rate is approximate because sampling is Bernoulli.
@@ -410,11 +418,12 @@ The dropout time is:
 All eligible entries from `tau` onward are masked:
 
 ```math
-mask_{n,t,d} = False \quad \text{for all } t \ge \tau_{n,d}
+mask_{n,t,d} = False \quad \text{for all } t \ge \tau_{n,d} \text{ with } (n,t,d) \in E
 ```
 
-This preserves the mechanism's influence: series with higher mechanism-assigned
-missing density drop out earlier.
+Non-eligible entries in the tail (pre-existing NaNs or non-target dimensions)
+are left untouched by the pattern. This preserves the mechanism's influence:
+series with higher mechanism-assigned missing density drop out earlier.
 
 ## Temporal Decay Pattern
 
