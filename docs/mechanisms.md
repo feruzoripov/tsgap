@@ -3,6 +3,9 @@
 Mechanisms describe the relationship between the data and the probability that
 a value is missing.
 
+For full formulas, normalization rules, and sampling details, see
+[Mathematical details](mathematical_details.md).
+
 ## MCAR
 
 `mcar` means Missing Completely At Random. Every eligible position has the same

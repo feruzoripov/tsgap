@@ -89,6 +89,7 @@ mask == False -> missing
 
 - [Installation](docs/installation.md)
 - [Core concepts](docs/concepts.md)
+- [Mathematical details](docs/mathematical_details.md)
 - [Mechanisms](docs/mechanisms.md)
 - [Patterns](docs/patterns.md)
 - [API reference](docs/api.md)
