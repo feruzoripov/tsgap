@@ -10,6 +10,9 @@ structure. For example, MAR missingness can be simulated as scattered points,
 contiguous blocks, monotone dropout, late-series decay, or bursty Markov
 segments.
 
+For formulas and step-by-step probability calculations, see
+[Mathematical details](mathematical_details.md).
+
 ## Mechanisms
 
 | Mechanism | Meaning | Rate control |

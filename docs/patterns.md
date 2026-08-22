@@ -3,6 +3,9 @@
 Patterns describe the temporal arrangement of missing values. Every pattern can
 be combined with any mechanism.
 
+For step-by-step formulas for each pattern, see
+[Mathematical details](mathematical_details.md).
+
 ![3x5 grid showing mechanism and pattern combinations.](../assets/mechanism_pattern_grid.png)
 
 ## Pointwise
