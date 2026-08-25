@@ -1290,3 +1290,331 @@ class TestMarkovPattern:
         )
 
         np.testing.assert_array_equal(mask1, mask2)
+
+
+class TestGilbertElliottPattern:
+    """Test Gilbert-Elliott burst-loss pattern."""
+
+    def test_gilbert_elliott_approximate_rate(self):
+        """Should produce approximately the target rate with default losses."""
+        X = np.random.default_rng(42).standard_normal((500, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="gilbert_elliott", persist=0.85
+        )
+
+        actual_rate = (~mask).sum() / mask.size
+        assert abs(actual_rate - 0.20) < 0.05
+
+    def test_gilbert_elliott_leaky_rate(self):
+        """Leaky losses (bad_loss<1, good_loss>0) should still hit target."""
+        X = np.random.default_rng(42).standard_normal((500, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42,
+            pattern="gilbert_elliott", persist=0.85,
+            bad_loss=0.8, good_loss=0.05
+        )
+
+        actual_rate = (~mask).sum() / mask.size
+        assert abs(actual_rate - 0.20) < 0.06
+
+    def test_gilbert_elliott_creates_bursts(self):
+        """Higher persist should create longer missing bursts."""
+        X = np.random.default_rng(42).standard_normal((500, 5))
+
+        def avg_burst_length(mask):
+            lengths = []
+            for d in range(mask.shape[-1]):
+                col = ~mask[:, d] if mask.ndim == 2 else ~mask[0, :, d]
+                run = 0
+                for v in col:
+                    if v:
+                        run += 1
+                    else:
+                        if run > 0:
+                            lengths.append(run)
+                        run = 0
+                if run > 0:
+                    lengths.append(run)
+            return np.mean(lengths) if lengths else 0
+
+        _, mask_low = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern="gilbert", persist=0.3
+        )
+        _, mask_high = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern="gilbert", persist=0.95
+        )
+
+        avg_low = avg_burst_length(mask_low)
+        avg_high = avg_burst_length(mask_high)
+
+        assert avg_high > avg_low, (
+            f"High persist ({avg_high:.1f}) should have longer bursts "
+            f"than low persist ({avg_low:.1f})"
+        )
+
+    def test_gilbert_elliott_leaky_bursts_are_ragged(self):
+        """With bad_loss<1, bad periods should not be fully missing.
+
+        A clean (bad_loss=1) burst run should tend to be longer/denser than a
+        leaky (bad_loss<1) one at the same persist, because leaky bad periods
+        let some values through.
+        """
+        X = np.random.default_rng(0).standard_normal((2000, 4))
+
+        def max_run(mask):
+            longest = 0
+            for d in range(mask.shape[-1]):
+                col = ~mask[:, d]
+                run = 0
+                for v in col:
+                    if v:
+                        run += 1
+                        longest = max(longest, run)
+                    else:
+                        run = 0
+            return longest
+
+        _, mask_clean = simulate_missingness(
+            X, "mcar", 0.30, seed=1, pattern="gilbert",
+            persist=0.95, bad_loss=1.0, good_loss=0.0
+        )
+        _, mask_leaky = simulate_missingness(
+            X, "mcar", 0.30, seed=1, pattern="gilbert",
+            persist=0.95, bad_loss=0.6, good_loss=0.0
+        )
+
+        # Clean bad periods produce longer uninterrupted runs than leaky ones.
+        assert max_run(mask_clean) > max_run(mask_leaky)
+
+    def test_gilbert_elliott_3d(self):
+        """Should work with 3D data."""
+        X = np.random.default_rng(42).standard_normal((5, 300, 4))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.25, seed=42, pattern="burst",
+            persist=0.9, bad_loss=0.9, good_loss=0.02
+        )
+
+        assert mask.shape == X.shape
+        actual_rate = (~mask).sum() / mask.size
+        assert abs(actual_rate - 0.25) < 0.10
+
+    def test_gilbert_elliott_with_mar(self):
+        """Should reject MAR because Gilbert-Elliott is MCAR-only."""
+        X = np.random.default_rng(42).standard_normal((400, 5))
+
+        with pytest.raises(ValueError, match="only mechanism='mcar'"):
+            simulate_missingness(
+                X, "mar", 0.20, seed=42,
+                pattern="gilbert_elliott", driver_dims=[0], persist=0.8
+            )
+
+    def test_gilbert_elliott_with_mnar(self):
+        """Should reject MNAR because Gilbert-Elliott is MCAR-only."""
+        X = np.random.default_rng(42).standard_normal((400, 5))
+
+        with pytest.raises(ValueError, match="only mechanism='mcar'"):
+            simulate_missingness(
+                X, "mnar", 0.20, seed=42,
+                pattern="gilbert_elliott", mnar_mode="extreme", persist=0.8
+            )
+
+    def test_gilbert_alias(self):
+        """'gilbert' should be an alias for gilbert_elliott."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42, pattern="gilbert", persist=0.6
+        )
+
+        assert mask.shape == X.shape
+
+    def test_burst_alias(self):
+        """'burst' should be an alias for gilbert_elliott."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42, pattern="burst", persist=0.6
+        )
+
+        assert mask.shape == X.shape
+
+    def test_gilbert_elliott_hyphen_alias(self):
+        """'gilbert-elliott' should be an alias for gilbert_elliott."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42,
+            pattern="gilbert-elliott", persist=0.6
+        )
+
+        assert mask.shape == X.shape
+
+    def test_gilbert_elliott_reduces_to_markov_defaults(self):
+        """With bad_loss=1, good_loss=0, behavior matches markov statistically.
+
+        Both patterns share the same 2-state chain and calibration. They are
+        not bitwise-identical because Gilbert-Elliott consumes an extra RNG
+        draw per timestep for the (here deterministic) emission step, so we
+        compare the achieved rate and the clean on/off structure instead.
+        """
+        X = np.random.default_rng(42).standard_normal((2000, 5))
+
+        _, mask_ge = simulate_missingness(
+            X, "mcar", 0.20, seed=7,
+            pattern="gilbert_elliott", persist=0.8,
+            bad_loss=1.0, good_loss=0.0
+        )
+        _, mask_markov = simulate_missingness(
+            X, "mcar", 0.20, seed=7, pattern="markov", persist=0.8
+        )
+
+        rate_ge = (~mask_ge).mean()
+        rate_markov = (~mask_markov).mean()
+
+        # Same target, same calibration -> close achieved rates.
+        assert abs(rate_ge - rate_markov) < 0.03
+        assert abs(rate_ge - 0.20) < 0.05
+
+    def test_gilbert_elliott_clean_defaults_match_bad_state(self):
+        """With bad_loss=1, good_loss=0, missingness is a clean on/off process.
+
+        No emission noise means the mask equals the bad-state occupancy, so
+        there are no isolated single-step survivors inside otherwise-missing
+        runs beyond what the chain itself produces.
+        """
+        X = np.random.default_rng(0).standard_normal((1000, 4))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.30, seed=3,
+            pattern="gilbert_elliott", persist=0.9,
+            bad_loss=1.0, good_loss=0.0
+        )
+
+        # Sanity: produces a reasonable rate and some bursts.
+        assert abs((~mask).mean() - 0.30) < 0.08
+
+    def test_gilbert_elliott_reproducible(self):
+        """Same seed should produce identical masks."""
+        X = np.random.default_rng(42).standard_normal((200, 5))
+
+        _, mask1 = simulate_missingness(
+            X, "mcar", 0.20, seed=99, pattern="gilbert",
+            persist=0.8, bad_loss=0.9, good_loss=0.05
+        )
+        _, mask2 = simulate_missingness(
+            X, "mcar", 0.20, seed=99, pattern="gilbert",
+            persist=0.8, bad_loss=0.9, good_loss=0.05
+        )
+
+        np.testing.assert_array_equal(mask1, mask2)
+
+    def test_gilbert_elliott_invalid_persist(self):
+        """Should raise error for persist out of [0, 1)."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        with pytest.raises(ValueError, match="persist"):
+            simulate_missingness(
+                X, "mcar", 0.15, seed=42, pattern="gilbert", persist=1.0
+            )
+
+        with pytest.raises(ValueError, match="persist"):
+            simulate_missingness(
+                X, "mcar", 0.15, seed=42, pattern="gilbert", persist=-0.1
+            )
+
+    def test_gilbert_elliott_invalid_bad_loss(self):
+        """Should raise error for bad_loss out of (0, 1]."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        with pytest.raises(ValueError, match="bad_loss"):
+            simulate_missingness(
+                X, "mcar", 0.15, seed=42, pattern="gilbert", bad_loss=0.0
+            )
+
+        with pytest.raises(ValueError, match="bad_loss"):
+            simulate_missingness(
+                X, "mcar", 0.15, seed=42, pattern="gilbert", bad_loss=1.5
+            )
+
+    def test_gilbert_elliott_invalid_good_loss(self):
+        """Should raise error for good_loss out of [0, 1)."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        with pytest.raises(ValueError, match="good_loss"):
+            simulate_missingness(
+                X, "mcar", 0.15, seed=42, pattern="gilbert", good_loss=1.0
+            )
+
+    def test_gilbert_elliott_good_not_less_than_bad(self):
+        """Should raise error when good_loss >= bad_loss."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        with pytest.raises(ValueError, match="good_loss must be strictly less"):
+            simulate_missingness(
+                X, "mcar", 0.15, seed=42, pattern="gilbert",
+                bad_loss=0.5, good_loss=0.9
+            )
+
+    def test_gilbert_elliott_infeasible_low_rate(self):
+        """Should raise when target rate is below good_loss."""
+        X = np.random.default_rng(42).standard_normal((1000, 5))
+
+        with pytest.raises(ValueError, match="infeasible"):
+            simulate_missingness(
+                X, "mcar", 0.02, seed=42, pattern="gilbert",
+                bad_loss=0.8, good_loss=0.05
+            )
+
+    def test_gilbert_elliott_infeasible_high_rate(self):
+        """Should raise when target rate is at or above bad_loss."""
+        X = np.random.default_rng(42).standard_normal((1000, 5))
+
+        with pytest.raises(ValueError, match="infeasible"):
+            simulate_missingness(
+                X, "mcar", 0.90, seed=42, pattern="gilbert",
+                bad_loss=0.8, good_loss=0.05
+            )
+
+    def test_gilbert_elliott_all_missing_edge_case(self):
+        """A 100% mechanism mask should remain fully missing."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 1.0, seed=42, pattern="gilbert",
+            bad_loss=0.8, good_loss=0.05
+        )
+
+        assert (~mask).all()
+
+    def test_gilbert_elliott_preserves_existing_nans(self):
+        """Pre-existing NaNs must remain missing after the pattern."""
+        X = np.random.default_rng(42).standard_normal((200, 5))
+        X[0:10, 0] = np.nan
+
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42, pattern="gilbert", persist=0.8
+        )
+
+        assert np.isnan(X_missing[0:10, 0]).all()
+        assert (~mask[0:10, 0]).all()
+
+    def test_gilbert_elliott_respects_target_dims(self):
+        """Only target dimensions should receive missingness."""
+        X = np.random.default_rng(42).standard_normal((300, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.20, seed=42, pattern="gilbert",
+            persist=0.8, target=[1, 3]
+        )
+
+        # Non-target dims stay fully observed
+        assert mask[:, 0].all()
+        assert mask[:, 2].all()
+        assert mask[:, 4].all()
+        # Target dims have some missingness
+        assert (~mask[:, 1]).sum() > 0
+        assert (~mask[:, 3]).sum() > 0

@@ -56,7 +56,14 @@ Pattern parameters:
 | `block_density` | block | `1.0` | Fraction of missingness in blocks. Set below `1.0` to retain some pointwise missingness. |
 | `decay_rate` | decay | `3.0` | Decay ramp steepness |
 | `decay_center` | decay | `0.7` | Normalized ramp center |
-| `persist` | markov | `0.8` | Missing-state persistence |
+| `persist` | markov, gilbert_elliott | `0.8` | Missing/bad-state persistence. For `gilbert_elliott`, MCAR only. |
+| `bad_loss` | gilbert_elliott | `1.0` | Loss probability in the bad state. MCAR only. |
+| `good_loss` | gilbert_elliott | `0.0` | Loss probability in the good state. MCAR only. For partial rates, `good_loss <= missing_rate < bad_loss`. |
+
+`gilbert_elliott` supports only `mechanism="mcar"`. `missing_rate=0` adds no
+artificial missingness and `missing_rate=1` masks all eligible entries. Partial
+rates outside the feasible range defined by `good_loss` and `bad_loss` raise
+`ValueError`.
 
 ## `simulate_many_rates`
 

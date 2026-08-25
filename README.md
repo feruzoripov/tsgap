@@ -5,16 +5,19 @@
 A Python library for simulating realistic missingness in time-series data for imputation benchmarking.
 
 TSGap separates **mechanisms** (why data is missing: MCAR, MAR, MNAR) from
-**patterns** (how data is missing: pointwise, block, monotone, decay, markov).
-Any mechanism can be combined with any pattern, making it easy to create
+**patterns** (how data is missing: pointwise, block, monotone, decay, markov,
+Gilbert-Elliott).
+Most patterns can be combined with any mechanism, making it easy to create
 controlled missing-data scenarios for evaluating imputation methods.
+`gilbert_elliott` is MCAR-only because it models an independent burst-loss
+channel rather than value- or driver-dependent missingness.
 
 ![Complete data (left) vs. five mechanism+pattern combinations at 20% missing rate.](assets/before_after.png)
 
 ## Features
 
 - MCAR, MAR, and MNAR missingness mechanisms
-- Pointwise, block, monotone, temporal decay, and Markov-chain patterns
+- Pointwise, block, monotone, temporal decay, Markov-chain, and Gilbert-Elliott patterns
 - 2D `(time, features)` and 3D `(samples, time, features)` arrays
 - Exact or calibrated missing-rate control
 - Weighted multi-driver MAR
@@ -73,6 +76,16 @@ X_miss, mask = simulate_missingness(
 X_miss, mask = simulate_missingness(
     X, "mnar", 0.20, seed=42,
     pattern="monotone", mnar_mode="extreme"
+)
+
+# Gilbert-Elliott: bursty packet-loss with leaky good/bad periods.
+# Burst length is controlled by `persist` (not block_frac): higher persist
+# means longer bursts. `bad_loss` < 1 lets some values through during a bad
+# period, and `good_loss` > 0 drops the occasional value during a good period.
+X_miss, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="gilbert_elliott", persist=0.9,
+    bad_loss=0.8, good_loss=0.02
 )
 
 print(f"Actual missing rate: {(~mask).mean():.4f}")
@@ -140,7 +153,7 @@ pytest tsgap/tests/ -v
   author = {Oripov, Feruz and Korchagina, Kseniia and Bonsu, Enock Adu and Bilgin, Ali and Aras, Shravan},
   title = {TSGap: A Python Library for Composable Time-Series Missingness Simulation},
   year = {2026},
-  version = {0.6.1},
+  version = {0.7.0},
   doi = {10.5281/zenodo.21365453},
   url = {https://github.com/feruzoripov/tsgap}
 }

@@ -43,9 +43,12 @@ def simulate_missingness(
         - "monotone": Once missing, stays missing (participant dropout)
         - "decay": Missingness increases over time (sensor degradation)
         - "markov": Temporally dependent flickering (intermittent sensor failure)
+        - "gilbert_elliott": Bursty two-state loss with leaky good/bad periods
+          (MCAR only)
         Aliases: "point"/"scattered" for pointwise; "contiguous" for block;
                  "dropout" for monotone; "degradation" for decay;
-                 "flickering" for markov
+                 "flickering" for markov;
+                 "gilbert-elliott"/"gilbert"/"burst" for gilbert_elliott
     **kwargs : dict
         Mechanism-specific parameters:
         
@@ -101,6 +104,18 @@ def simulate_missingness(
             persist : float, default=0.8
                 Probability of staying missing once entered [0, 1).
                 Higher = longer bursts.
+
+        Gilbert-Elliott pattern:
+            Supports mechanism="mcar" only.
+            persist : float, default=0.8
+                Probability of staying in the bad state [0, 1).
+                Higher = longer bursts.
+            bad_loss : float, default=1.0
+                Probability a value is missing while in the bad state (0, 1].
+            good_loss : float, default=0.0
+                Probability a value is missing while in the good state [0, 1).
+                Must be strictly less than bad_loss. For partial missing rates,
+                the target rate must satisfy good_loss <= rate < bad_loss.
     
     Returns
     -------
@@ -163,6 +178,16 @@ def simulate_missingness(
         raise ValueError(
             f"Unknown pattern: {pattern}. "
             f"Must be one of: {list(PATTERNS.keys())}"
+        )
+
+    if (
+        pattern in {"gilbert_elliott", "gilbert-elliott", "gilbert", "burst"}
+        and mechanism != "mcar"
+    ):
+        raise ValueError(
+            "gilbert_elliott pattern currently supports only mechanism='mcar'. "
+            "Use pattern='markov' for a simpler burst pattern that composes with "
+            "MAR or MNAR."
         )
     
     # Copy input
