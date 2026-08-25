@@ -1,10 +1,11 @@
 """Generate mechanism × pattern visualization grid for README and paper."""
 
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from tsgap import simulate_missingness
