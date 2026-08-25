@@ -1,5 +1,26 @@
 # Changelog
 
+## Version 0.7.0 - Gilbert-Elliott Burst Pattern
+
+### Added
+
+- Add the `gilbert_elliott` two-state burst-loss pattern (aliases: `gilbert`, `gilbert-elliott`, `burst`), the classic telecommunications model for bursty packet loss with leaky good/bad periods.
+- Add `bad_loss` and `good_loss` parameters controlling the per-state missing probability; with the defaults `bad_loss=1.0` and `good_loss=0.0` the pattern reduces to the clean on/off behavior of the `markov` pattern.
+- Automatically calibrate the onset probability from `bad_loss`, `good_loss`, and `persist` to match the requested missing rate.
+- Add feasibility validation: raise a clear error when the target rate does not satisfy `good_loss <= rate < bad_loss`.
+- Restrict `gilbert_elliott` to `mechanism="mcar"`, with an error message pointing to `markov` for MAR/MNAR use.
+- Add a plain-language "Intuition" walkthrough and a formal Gilbert-Elliott section to the mathematical details documentation.
+
+### Changed
+
+- Regenerate the mechanism-by-pattern grid (now 3x6) and before/after figures to include Gilbert-Elliott.
+
+### Testing
+
+- Expand the test suite to 140 tests, covering rate calibration, burst structure, leaky-vs-clean bursts, MCAR-only enforcement, feasibility errors, aliases, 3D behavior, NaN preservation, target dimensions, and reproducibility.
+
+---
+
 ## Version 0.6.1 - Block-Only Default Missingness
 
 ### Changed
