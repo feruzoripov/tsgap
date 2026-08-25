@@ -10,6 +10,12 @@ structure. For example, MAR missingness can be simulated as scattered points,
 contiguous blocks, monotone dropout, late-series decay, or bursty Markov
 segments.
 
+The Gilbert-Elliott pattern is the exception: it is MCAR-only because it models
+an independent burst-loss channel.
+
+For formulas and step-by-step probability calculations, see
+[Mathematical details](mathematical_details.md).
+
 ## Mechanisms
 
 | Mechanism | Meaning | Rate control |
@@ -27,6 +33,7 @@ segments.
 | `monotone` | `dropout` | Once missing, a series remains missing |
 | `decay` | `degradation` | Missingness increases over time |
 | `markov` | `flickering` | Bursty temporal dependence |
+| `gilbert_elliott` | `gilbert-elliott`, `gilbert`, `burst` | MCAR-only ragged bursts with leaky good/bad periods |
 
 ## Mask Convention
 
