@@ -6,9 +6,11 @@ A Python library for simulating realistic missingness in time-series data for im
 
 TSGap separates **mechanisms** (why data is missing: MCAR, MAR, MNAR) from
 **patterns** (how data is missing: pointwise, block, monotone, decay, markov,
-gilbert-elliott).
-Any mechanism can be combined with any pattern, making it easy to create
+Gilbert-Elliott).
+Most patterns can be combined with any mechanism, making it easy to create
 controlled missing-data scenarios for evaluating imputation methods.
+`gilbert_elliott` is MCAR-only because it models an independent burst-loss
+channel rather than value- or driver-dependent missingness.
 
 ![Complete data (left) vs. five mechanism+pattern combinations at 20% missing rate.](assets/before_after.png)
 

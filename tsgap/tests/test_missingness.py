@@ -1403,26 +1403,24 @@ class TestGilbertElliottPattern:
         assert abs(actual_rate - 0.25) < 0.10
 
     def test_gilbert_elliott_with_mar(self):
-        """Should compose with the MAR mechanism."""
+        """Should reject MAR because Gilbert-Elliott is MCAR-only."""
         X = np.random.default_rng(42).standard_normal((400, 5))
 
-        _, mask = simulate_missingness(
-            X, "mar", 0.20, seed=42,
-            pattern="gilbert_elliott", driver_dims=[0], persist=0.8
-        )
-
-        assert mask.shape == X.shape
+        with pytest.raises(ValueError, match="only mechanism='mcar'"):
+            simulate_missingness(
+                X, "mar", 0.20, seed=42,
+                pattern="gilbert_elliott", driver_dims=[0], persist=0.8
+            )
 
     def test_gilbert_elliott_with_mnar(self):
-        """Should compose with the MNAR mechanism."""
+        """Should reject MNAR because Gilbert-Elliott is MCAR-only."""
         X = np.random.default_rng(42).standard_normal((400, 5))
 
-        _, mask = simulate_missingness(
-            X, "mnar", 0.20, seed=42,
-            pattern="gilbert_elliott", mnar_mode="extreme", persist=0.8
-        )
-
-        assert mask.shape == X.shape
+        with pytest.raises(ValueError, match="only mechanism='mcar'"):
+            simulate_missingness(
+                X, "mnar", 0.20, seed=42,
+                pattern="gilbert_elliott", mnar_mode="extreme", persist=0.8
+            )
 
     def test_gilbert_alias(self):
         """'gilbert' should be an alias for gilbert_elliott."""
@@ -1440,6 +1438,17 @@ class TestGilbertElliottPattern:
 
         _, mask = simulate_missingness(
             X, "mcar", 0.15, seed=42, pattern="burst", persist=0.6
+        )
+
+        assert mask.shape == X.shape
+
+    def test_gilbert_elliott_hyphen_alias(self):
+        """'gilbert-elliott' should be an alias for gilbert_elliott."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.15, seed=42,
+            pattern="gilbert-elliott", persist=0.6
         )
 
         assert mask.shape == X.shape
@@ -1549,6 +1558,37 @@ class TestGilbertElliottPattern:
                 X, "mcar", 0.15, seed=42, pattern="gilbert",
                 bad_loss=0.5, good_loss=0.9
             )
+
+    def test_gilbert_elliott_infeasible_low_rate(self):
+        """Should raise when target rate is below good_loss."""
+        X = np.random.default_rng(42).standard_normal((1000, 5))
+
+        with pytest.raises(ValueError, match="infeasible"):
+            simulate_missingness(
+                X, "mcar", 0.02, seed=42, pattern="gilbert",
+                bad_loss=0.8, good_loss=0.05
+            )
+
+    def test_gilbert_elliott_infeasible_high_rate(self):
+        """Should raise when target rate is at or above bad_loss."""
+        X = np.random.default_rng(42).standard_normal((1000, 5))
+
+        with pytest.raises(ValueError, match="infeasible"):
+            simulate_missingness(
+                X, "mcar", 0.90, seed=42, pattern="gilbert",
+                bad_loss=0.8, good_loss=0.05
+            )
+
+    def test_gilbert_elliott_all_missing_edge_case(self):
+        """A 100% mechanism mask should remain fully missing."""
+        X = np.random.default_rng(42).standard_normal((100, 5))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 1.0, seed=42, pattern="gilbert",
+            bad_loss=0.8, good_loss=0.05
+        )
+
+        assert (~mask).all()
 
     def test_gilbert_elliott_preserves_existing_nans(self):
         """Pre-existing NaNs must remain missing after the pattern."""

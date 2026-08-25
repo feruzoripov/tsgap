@@ -636,6 +636,10 @@ P(missing_t \mid missing_{t-1}) = p_{persist}
 Higher `persist` values create longer missing bursts. Lower values create more
 rapid flickering.
 
+The Markov pattern controls the target rate in expectation, not as an exact
+count. The final realized rate can differ from `r`, especially when `T`, `N`, or
+`D` is small, because each sample-feature series is generated stochastically.
+
 ## Gilbert-Elliott Pattern
 
 The Gilbert-Elliott pattern generalizes the Markov pattern into a two-state
@@ -663,6 +667,10 @@ P(missing \mid bad) = h \qquad P(missing \mid good) = k
 where `h` is `bad_loss` and `k` is `good_loss`, with `0 <= k < h <= 1`. The
 Markov pattern is the special case `h = 1`, `k = 0`.
 
+This makes Gilbert-Elliott useful for channel-like dropout. A bad state means
+"high loss", not necessarily "everything missing"; a good state means "low
+loss", not necessarily "everything observed".
+
 ### Rate Calibration
 
 Let `rho` be the target missing fraction over eligible entries:
@@ -689,13 +697,30 @@ Solving for the required bad-state occupancy:
 \pi_{bad} = \frac{\rho - k}{h - k}
 ```
 
-TSGap clips `pi_bad` to `[0, 1]` (so targets outside `[k, h]` degrade
-gracefully) and then recovers the onset probability the same way as the Markov
-pattern:
+For partial missing rates, the requested rate must be feasible for the chosen
+state-loss probabilities:
+
+```math
+k \le \rho < h
+```
+
+TSGap raises `ValueError` when this condition is not met. This avoids silently
+returning a mask whose missing rate is constrained by `good_loss` or `bad_loss`
+rather than by the requested target. When the target is feasible, TSGap recovers
+the onset probability the same way as the Markov pattern:
 
 ```math
 p_{onset} = \frac{\pi_{bad}\,(1 - p_{persist})}{1 - \pi_{bad}}
 ```
+
+The feasible-rate condition has two practical consequences:
+
+- If `rho < good_loss`, even an always-good channel would lose too many values.
+- If `rho >= bad_loss`, even an always-bad channel would not lose enough values
+  for a partial-rate stochastic simulation.
+
+The special edge case `rho = 1` is handled directly by masking every eligible
+entry.
 
 ### Simulation
 
@@ -710,6 +735,66 @@ For each eligible sample-feature series, TSGap:
 The hidden state continues to evolve across non-eligible timesteps, so bursts
 span small ineligible gaps naturally. Because emission is stochastic, the
 achieved rate is approximate, as with the Markov pattern.
+
+The expected missing rate is:
+
+```math
+E[\hat{r}] \approx \rho
+```
+
+but the realized rate is:
+
+```math
+\hat{r} = \frac{\#\{i \in E : mask_i = False\}}{|E|}
+```
+
+and can vary around `rho` because both hidden states and state-dependent losses
+are sampled.
+
+Gilbert-Elliott currently supports only MCAR. It uses the MCAR mechanism mask to
+set the missingness budget over eligible entries, then samples new locations
+from the hidden-state burst process. Use the `markov` pattern if you need a
+bursty temporal process that composes with MAR or MNAR.
+
+### Gilbert-Elliott Parameter Edge Cases
+
+TSGap validates the parameters before simulation:
+
+```math
+0 \le p_{persist} < 1
+```
+
+```math
+0 < h \le 1
+```
+
+```math
+0 \le k < 1
+```
+
+```math
+k < h
+```
+
+For partial missing rates:
+
+```math
+k \le \rho < h
+```
+
+If `rho = 0`, the mechanism step produces no new missing values, so the pattern
+returns without adding artificial missingness. If `rho = 1`, every eligible
+entry is masked.
+
+Examples:
+
+| Configuration | Behavior |
+|---------------|----------|
+| `bad_loss=1.0`, `good_loss=0.0` | Clean on/off bursts, similar to `markov` |
+| `bad_loss=0.8`, `good_loss=0.0` | Bad periods are leaky; some values survive |
+| `bad_loss=1.0`, `good_loss=0.05` | Good periods still have occasional dropouts |
+| `missing_rate < good_loss` | Infeasible; raises `ValueError` |
+| `missing_rate >= bad_loss` for partial rates | Infeasible; raises `ValueError` |
 
 ## Reproducibility
 

@@ -1,7 +1,9 @@
 # Patterns
 
-Patterns describe the temporal arrangement of missing values. Every pattern can
-be combined with any mechanism.
+Patterns describe the temporal arrangement of missing values. Most patterns can
+be combined with any mechanism. `gilbert_elliott` is MCAR-only because it models
+an independent burst-loss channel rather than value- or driver-dependent
+missingness.
 
 For step-by-step formulas for each pattern, see
 [Mathematical details](mathematical_details.md).
@@ -120,6 +122,9 @@ Parameters:
 |-----------|---------|-------------|
 | `persist` | `0.8` | Probability of staying missing, in `[0, 1)` |
 
+Rate control: calibrated in expectation. The realized missing rate is
+approximate because each series is sampled from a Markov chain.
+
 Alias: `flickering`.
 
 ## Gilbert-Elliott
@@ -139,10 +144,19 @@ X_missing, mask = simulate_missingness(
 )
 ```
 
-The overall missing rate is calibrated automatically from `bad_loss`,
-`good_loss`, and `persist` to match the requested `missing_rate`. With the
-defaults `bad_loss=1.0` and `good_loss=0.0`, the model reduces to the clean
-on/off behavior of the `markov` pattern.
+Gilbert-Elliott currently supports only `mechanism="mcar"`. Use `markov` if you
+need a bursty pattern that composes with MAR or MNAR.
+
+For partial missing rates, calibration requires
+`good_loss <= missing_rate < bad_loss`; TSGap raises `ValueError` when the
+requested rate is outside that feasible range. With the defaults
+`bad_loss=1.0` and `good_loss=0.0`, the model reduces to the clean on/off
+behavior of the `markov` pattern.
+
+Gilbert-Elliott uses the MCAR mechanism mask to define the missingness budget
+over eligible entries, then reshapes that budget into a channel-style burst
+process. It preserves eligibility and target dimensions, but the final missing
+locations are governed by the hidden good/bad state process.
 
 Parameters:
 
@@ -152,7 +166,37 @@ Parameters:
 | `bad_loss` | `1.0` | Probability a value is missing while in the bad state (`h`), in `(0, 1]`. |
 | `good_loss` | `0.0` | Probability a value is missing while in the good state (`k`), in `[0, 1)`. Must be strictly less than `bad_loss`. |
 
-Aliases: `gilbert`, `burst`.
+Aliases: `gilbert-elliott`, `gilbert`, `burst`.
+
+### Gilbert-Elliott Edge Cases
+
+- `good_loss` must satisfy `0 <= good_loss < bad_loss`.
+- `bad_loss` must satisfy `0 < bad_loss <= 1`.
+- `persist` must satisfy `0 <= persist < 1`.
+- For partial rates, `good_loss <= missing_rate < bad_loss` is required.
+- If `missing_rate=0`, no new values are artificially masked.
+- If `missing_rate=1`, all eligible values are masked, regardless of
+  `bad_loss` and `good_loss`.
+- With `bad_loss=1.0` and `good_loss=0.0`, Gilbert-Elliott behaves like a
+  clean on/off burst process similar to the `markov` pattern.
+- With `bad_loss<1.0`, bad periods are leaky: some values remain observed
+  inside bursts.
+- With `good_loss>0.0`, good periods can still contain occasional isolated
+  missing values.
+
+## Rate Control Summary
+
+Different patterns control the target rate differently:
+
+| Pattern | Rate behavior |
+|---------|---------------|
+| `pointwise` with MCAR | Exact count up to rounding |
+| `pointwise` with MAR/MNAR | Calibrated probability, approximate realized rate |
+| `block` | Preserves the mechanism missing count when enough eligible positions are available |
+| `monotone` | Allocates the mechanism missing budget into dropout tails, with rounding adjustment |
+| `decay` | Resamples the mechanism missing count using temporal weights |
+| `markov` | Calibrated in expectation; realized rate is approximate |
+| `gilbert_elliott` | MCAR-only. Calibrated in expectation when feasible; realized rate is approximate |
 
 ## Eligibility Guarantees
 

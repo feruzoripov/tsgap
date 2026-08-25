@@ -737,8 +737,9 @@ def apply_gilbert_elliott_pattern(
         P(missing | bad)  = bad_loss   (h)
         P(missing | good) = good_loss  (k)
 
-    ``p_onset`` is calibrated automatically so the overall missing rate matches
-    the mechanism's target. Using the stationary bad-state probability
+    ``p_onset`` is calibrated automatically when the target rate is feasible
+    for the chosen state-loss probabilities. Using the stationary bad-state
+    probability
     ``pi_bad = p_onset / (p_onset + 1 - persist)``, the achieved rate is
     ``pi_bad * bad_loss + (1 - pi_bad) * good_loss``. Solving for the required
     ``pi_bad`` given the target rate ``rho``:
@@ -803,10 +804,21 @@ def apply_gilbert_elliott_pattern(
     # Overall target missing rate over eligible entries.
     rho = n_target_missing / total_elements
 
+    if rho >= 1.0:
+        new_mask = np.ones_like(mask, dtype=bool)
+        new_mask[eligible_mask] = False
+        return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
+
+    if not good_loss <= rho < bad_loss:
+        raise ValueError(
+            "missing_rate is infeasible for gilbert_elliott with the chosen "
+            "good_loss and bad_loss. The target rate after the mechanism must "
+            f"satisfy good_loss <= rate < bad_loss; got rate={rho:.4f}, "
+            f"good_loss={good_loss:.4f}, bad_loss={bad_loss:.4f}."
+        )
+
     # Required stationary bad-state probability to achieve the target rate.
-    # Clipped to [0, 1] for robustness if the target lies outside [k, h].
     pi_bad = (rho - good_loss) / (bad_loss - good_loss)
-    pi_bad = float(np.clip(pi_bad, 0.0, 1.0))
 
     # Onset probability from the stationary distribution:
     # pi_bad = p_onset / (p_onset + 1 - persist)
@@ -863,6 +875,7 @@ PATTERNS = {
     "markov": apply_markov_pattern,
     "flickering": apply_markov_pattern,     # Alias
     "gilbert_elliott": apply_gilbert_elliott_pattern,
+    "gilbert-elliott": apply_gilbert_elliott_pattern,  # Alias
     "gilbert": apply_gilbert_elliott_pattern,  # Alias
     "burst": apply_gilbert_elliott_pattern,    # Alias
 }
