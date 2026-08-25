@@ -43,9 +43,11 @@ def simulate_missingness(
         - "monotone": Once missing, stays missing (participant dropout)
         - "decay": Missingness increases over time (sensor degradation)
         - "markov": Temporally dependent flickering (intermittent sensor failure)
+        - "gilbert_elliott": Bursty two-state loss with leaky good/bad periods
         Aliases: "point"/"scattered" for pointwise; "contiguous" for block;
                  "dropout" for monotone; "degradation" for decay;
-                 "flickering" for markov
+                 "flickering" for markov;
+                 "gilbert"/"burst" for gilbert_elliott
     **kwargs : dict
         Mechanism-specific parameters:
         
@@ -101,6 +103,16 @@ def simulate_missingness(
             persist : float, default=0.8
                 Probability of staying missing once entered [0, 1).
                 Higher = longer bursts.
+
+        Gilbert-Elliott pattern:
+            persist : float, default=0.8
+                Probability of staying in the bad state [0, 1).
+                Higher = longer bursts.
+            bad_loss : float, default=1.0
+                Probability a value is missing while in the bad state (0, 1].
+            good_loss : float, default=0.0
+                Probability a value is missing while in the good state [0, 1).
+                Must be strictly less than bad_loss.
     
     Returns
     -------

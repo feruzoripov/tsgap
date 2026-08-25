@@ -706,6 +706,149 @@ def apply_markov_pattern(
     return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
 
 
+def apply_gilbert_elliott_pattern(
+    mask: np.ndarray,
+    shape: tuple[int, ...],
+    persist: float = 0.8,
+    bad_loss: float = 1.0,
+    good_loss: float = 0.0,
+    eligible_mask: np.ndarray | None = None,
+    forced_missing: np.ndarray | None = None,
+    rng: np.random.Generator | None = None,
+    **kwargs
+) -> np.ndarray:
+    """Apply the Gilbert-Elliott burst-loss pattern.
+
+    A 2-state hidden Markov model widely used to model bursty packet loss in
+    telecommunications. Each (sample, dimension) series alternates between a
+    "good" state (low loss) and a "bad" state (high loss). Unlike the
+    ``markov`` pattern---which is the degenerate case where the bad state is
+    always missing and the good state is never missing---the Gilbert-Elliott
+    model produces *ragged* bursts: bad periods still let some values through,
+    and good periods can have occasional dropouts.
+
+    The hidden state evolves as a 2-state Markov chain:
+
+        P(bad at t | bad at t-1)  = persist
+        P(bad at t | good at t-1) = p_onset
+
+    Within each state, a value is missing with a state-dependent probability:
+
+        P(missing | bad)  = bad_loss   (h)
+        P(missing | good) = good_loss  (k)
+
+    ``p_onset`` is calibrated automatically so the overall missing rate matches
+    the mechanism's target. Using the stationary bad-state probability
+    ``pi_bad = p_onset / (p_onset + 1 - persist)``, the achieved rate is
+    ``pi_bad * bad_loss + (1 - pi_bad) * good_loss``. Solving for the required
+    ``pi_bad`` given the target rate ``rho``:
+
+        pi_bad = (rho - good_loss) / (bad_loss - good_loss)
+
+    Parameters
+    ----------
+    mask : np.ndarray
+        Initial boolean mask from mechanism (True=observed, False=missing).
+    shape : tuple
+        Shape of the data.
+    persist : float
+        Probability of staying in the bad state, range [0, 1). Higher values
+        create longer bursts. Default 0.8.
+    bad_loss : float
+        Probability of a value being missing while in the bad state (h),
+        range (0, 1]. Default 1.0 (bad state always loses).
+    good_loss : float
+        Probability of a value being missing while in the good state (k),
+        range [0, 1). Must be strictly less than ``bad_loss``. Default 0.0
+        (good state never loses).
+    rng : np.random.Generator, optional
+        Random number generator for reproducibility.
+
+    Returns
+    -------
+    mask : np.ndarray
+        Modified mask with Gilbert-Elliott burst-loss structure.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    if not 0.0 <= persist < 1.0:
+        raise ValueError("persist must be in [0, 1), got {:.4f}".format(persist))
+    if not 0.0 < bad_loss <= 1.0:
+        raise ValueError("bad_loss must be in (0, 1], got {:.4f}".format(bad_loss))
+    if not 0.0 <= good_loss < 1.0:
+        raise ValueError("good_loss must be in [0, 1), got {:.4f}".format(good_loss))
+    if good_loss >= bad_loss:
+        raise ValueError("good_loss must be strictly less than bad_loss")
+
+    eligible_mask, forced_missing = _pattern_context(
+        mask, eligible_mask, forced_missing
+    )
+
+    n_target_missing = int(((~mask) & eligible_mask).sum())
+    if n_target_missing == 0:
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
+
+    is_2d = len(shape) == 2
+    if is_2d:
+        T, D = shape
+        N = 1
+    else:
+        N, T, D = shape
+
+    total_elements = int(eligible_mask.sum())
+    if total_elements == 0:
+        return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
+
+    # Overall target missing rate over eligible entries.
+    rho = n_target_missing / total_elements
+
+    # Required stationary bad-state probability to achieve the target rate.
+    # Clipped to [0, 1] for robustness if the target lies outside [k, h].
+    pi_bad = (rho - good_loss) / (bad_loss - good_loss)
+    pi_bad = float(np.clip(pi_bad, 0.0, 1.0))
+
+    # Onset probability from the stationary distribution:
+    # pi_bad = p_onset / (p_onset + 1 - persist)
+    # => p_onset = pi_bad * (1 - persist) / (1 - pi_bad)
+    if pi_bad >= 1.0:
+        p_onset = 1.0
+    else:
+        p_onset = pi_bad * (1.0 - persist) / (1.0 - pi_bad)
+    p_onset = float(np.clip(p_onset, 0.0, 1.0))
+
+    new_mask = np.ones(shape, dtype=bool)
+
+    def _simulate_series(series_view, eligible_view):
+        in_bad = rng.random() < pi_bad
+        for t in range(T):
+            if not eligible_view[t]:
+                series_view[t] = True  # keep non-eligible observed
+                # State still evolves so bursts span ineligible gaps naturally.
+            else:
+                loss_prob = bad_loss if in_bad else good_loss
+                series_view[t] = not (rng.random() < loss_prob)
+            # Transition the hidden state.
+            if in_bad:
+                in_bad = rng.random() < persist
+            else:
+                in_bad = rng.random() < p_onset
+
+    if is_2d:
+        for d in range(D):
+            if not eligible_mask[:, d].any():
+                continue
+            _simulate_series(new_mask[:, d], eligible_mask[:, d])
+    else:  # 3D
+        for n in range(N):
+            for d in range(D):
+                if not eligible_mask[n, :, d].any():
+                    continue
+                _simulate_series(new_mask[n, :, d], eligible_mask[n, :, d])
+
+    return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
+
+
 # Pattern registry
 PATTERNS = {
     "pointwise": apply_pointwise_pattern,
@@ -719,4 +862,7 @@ PATTERNS = {
     "degradation": apply_temporal_decay_pattern,  # Alias
     "markov": apply_markov_pattern,
     "flickering": apply_markov_pattern,     # Alias
+    "gilbert_elliott": apply_gilbert_elliott_pattern,
+    "gilbert": apply_gilbert_elliott_pattern,  # Alias
+    "burst": apply_gilbert_elliott_pattern,    # Alias
 }

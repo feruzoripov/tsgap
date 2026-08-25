@@ -129,6 +129,11 @@ shapes while keeping the same total count.
   a broken sensor *stays* broken next step (high = long outages). The onset
   probability (chance a working sensor breaks) is solved automatically so the
   long-run average matches the target rate.
+- **Gilbert-Elliott.** A more realistic version of flickering (bursty packet
+  loss). The sensor alternates between "good" and "bad" periods, but a bad
+  period only loses data *most* of the time (`bad_loss`), and a good period can
+  still drop the occasional value (`good_loss`). This makes bursts look ragged
+  rather than perfectly on/off.
 
 ### Step 3: Finishing up
 
@@ -631,6 +636,81 @@ P(missing_t \mid missing_{t-1}) = p_{persist}
 Higher `persist` values create longer missing bursts. Lower values create more
 rapid flickering.
 
+## Gilbert-Elliott Pattern
+
+The Gilbert-Elliott pattern generalizes the Markov pattern into a two-state
+*hidden* Markov model, the classic burst-loss model from telecommunications.
+
+Each sample-feature series has a hidden state that is either good or bad. The
+state evolves as a 2-state Markov chain:
+
+```math
+P(bad_t \mid bad_{t-1}) = p_{persist}
+```
+
+```math
+P(bad_t \mid good_{t-1}) = p_{onset}
+```
+
+Unlike the Markov pattern, the state does not directly determine missingness.
+Instead, within each state a value is missing with a state-dependent
+probability:
+
+```math
+P(missing \mid bad) = h \qquad P(missing \mid good) = k
+```
+
+where `h` is `bad_loss` and `k` is `good_loss`, with `0 <= k < h <= 1`. The
+Markov pattern is the special case `h = 1`, `k = 0`.
+
+### Rate Calibration
+
+Let `rho` be the target missing fraction over eligible entries:
+
+```math
+\rho = \frac{M}{|E|}
+```
+
+The stationary probability of being in the bad state is:
+
+```math
+\pi_{bad} = \frac{p_{onset}}{p_{onset} + 1 - p_{persist}}
+```
+
+The long-run missing rate combines both states:
+
+```math
+\rho = \pi_{bad}\, h + (1 - \pi_{bad})\, k
+```
+
+Solving for the required bad-state occupancy:
+
+```math
+\pi_{bad} = \frac{\rho - k}{h - k}
+```
+
+TSGap clips `pi_bad` to `[0, 1]` (so targets outside `[k, h]` degrade
+gracefully) and then recovers the onset probability the same way as the Markov
+pattern:
+
+```math
+p_{onset} = \frac{\pi_{bad}\,(1 - p_{persist})}{1 - \pi_{bad}}
+```
+
+### Simulation
+
+For each eligible sample-feature series, TSGap:
+
+1. Initializes the hidden state as bad with probability `pi_bad`.
+2. At each timestep, if the entry is eligible, marks it missing with probability
+   `h` in the bad state or `k` in the good state.
+3. Transitions the hidden state using `p_persist` (from bad) or `p_onset`
+   (from good).
+
+The hidden state continues to evolve across non-eligible timesteps, so bursts
+span small ineligible gaps naturally. Because emission is stochastic, the
+achieved rate is approximate, as with the Markov pattern.
+
 ## Reproducibility
 
 All randomness flows through NumPy's `Generator` API:
@@ -656,6 +736,7 @@ The pattern controls the temporal shape:
 - monotone: move missingness into tail dropout.
 - decay: shift missingness toward later timesteps.
 - markov: create bursty on/off missingness.
+- gilbert-elliott: create ragged bursts with leaky good and bad periods.
 
 Together, these two axes let users test whether an imputation method is robust
 to both the statistical cause and temporal structure of missing data.

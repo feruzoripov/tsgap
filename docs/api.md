@@ -56,7 +56,9 @@ Pattern parameters:
 | `block_density` | block | `1.0` | Fraction of missingness in blocks. Set below `1.0` to retain some pointwise missingness. |
 | `decay_rate` | decay | `3.0` | Decay ramp steepness |
 | `decay_center` | decay | `0.7` | Normalized ramp center |
-| `persist` | markov | `0.8` | Missing-state persistence |
+| `persist` | markov, gilbert_elliott | `0.8` | Missing/bad-state persistence |
+| `bad_loss` | gilbert_elliott | `1.0` | Loss probability in the bad state |
+| `good_loss` | gilbert_elliott | `0.0` | Loss probability in the good state |
 
 ## `simulate_many_rates`
 

@@ -30,6 +30,7 @@ For formulas and step-by-step probability calculations, see
 | `monotone` | `dropout` | Once missing, a series remains missing |
 | `decay` | `degradation` | Missingness increases over time |
 | `markov` | `flickering` | Bursty temporal dependence |
+| `gilbert_elliott` | `gilbert`, `burst` | Ragged bursts with leaky good/bad periods |
 
 ## Mask Convention
 

@@ -122,6 +122,38 @@ Parameters:
 
 Alias: `flickering`.
 
+## Gilbert-Elliott
+
+A two-state burst-loss model widely used to describe bursty packet loss in
+telecommunications. Each sample-feature series alternates between a *good* state
+(low loss) and a *bad* state (high loss). Unlike the `markov` pattern---where the
+bad state is always missing and the good state is never missing---Gilbert-Elliott
+produces *ragged* bursts: bad periods still let some values through, and good
+periods can have occasional dropouts.
+
+```python
+X_missing, mask = simulate_missingness(
+    X, "mcar", 0.20, seed=42,
+    pattern="gilbert_elliott", persist=0.9,
+    bad_loss=0.8, good_loss=0.02
+)
+```
+
+The overall missing rate is calibrated automatically from `bad_loss`,
+`good_loss`, and `persist` to match the requested `missing_rate`. With the
+defaults `bad_loss=1.0` and `good_loss=0.0`, the model reduces to the clean
+on/off behavior of the `markov` pattern.
+
+Parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `persist` | `0.8` | Probability of staying in the bad state, in `[0, 1)`. Higher values create longer bursts. |
+| `bad_loss` | `1.0` | Probability a value is missing while in the bad state (`h`), in `(0, 1]`. |
+| `good_loss` | `0.0` | Probability a value is missing while in the good state (`k`), in `[0, 1)`. Must be strictly less than `bad_loss`. |
+
+Aliases: `gilbert`, `burst`.
+
 ## Eligibility Guarantees
 
 All patterns preserve:
