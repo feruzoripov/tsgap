@@ -36,7 +36,7 @@ affiliations:
   - name: Radiology and Imaging Sciences, University of Arizona, USA
     index: 5
     ror: 03m2x1q45
-date: 16 August 2026
+date: 25 August 2026
 bibliography: paper.bib
 ---
 
@@ -59,6 +59,11 @@ therefore evaluate whether an imputation method that performs well under random
 scattered missingness also handles activity-dependent sensor dropout or gradual
 sensor degradation.
 
+Recent releases extend this design with scale-aware block missingness and an
+MCAR-only Gilbert-Elliott burst-loss pattern
+[@gilbert1960capacity; @elliott1963estimates], allowing users to simulate
+channel-like dropout with leaky good and bad states.
+
 # Statement of Need
 
 The missing data literature distinguishes three canonical mechanisms
@@ -67,7 +72,8 @@ The missing data literature distinguishes three canonical mechanisms
 time-series data, the *temporal structure* of missingness is equally important:
 data may be missing as scattered individual points, contiguous blocks (sensor
 dropout), monotone tails (participant dropout), gradually increasing gaps (sensor
-degradation), or intermittent bursts (flickering connections).
+degradation), intermittent bursts (flickering connections), or burst-loss
+episodes in which poor signal periods still contain occasional observations.
 
 Existing tools cover parts of this problem.
 The `ampute` function in the R package `mice` [@vanbuuren2011mice] provides
@@ -91,16 +97,17 @@ the Field section.
 
 `tsgap` provides:
 
-- **Mechanism--pattern composability**: 3 mechanisms $\times$ 5 patterns = 15
-  distinct missingness configurations, all accessible through a single function
-  call.
+- **Mechanism--pattern composability**: MCAR, MAR, and MNAR mechanisms can be
+  combined with pointwise, block, monotone, temporal decay, and Markov patterns
+  through a single function call.
 - **Automatic rate calibration**: Binary search offset calibration for MAR and
   MNAR ensures that researchers can conduct controlled experiments at precise
   target missing rates, rather than accepting the uncontrolled rates produced
   by uncalibrated sigmoid models.
-- **Temporal pattern diversity**: Block, monotone, temporal decay, and Markov
-  chain patterns capture real-world missingness structures absent from existing
-  Python tools.
+- **Temporal pattern diversity**: Block, monotone, temporal decay, Markov chain,
+  and MCAR-only Gilbert-Elliott patterns capture real-world missingness
+  structures that are not otherwise available through one lightweight Python
+  interface.
 - **Scale-aware block gaps**: Block lengths can be specified as absolute sample
   counts or as fractions of the time axis, including `(min_frac, max_frac)`
   ranges for variable-length dropout episodes in long wearable-style recordings.
@@ -130,9 +137,9 @@ PyGrinder [@du2023pypots] provides Python-native MCAR, MAR, MNAR, sequential,
 and block-missing generators as part of the PyPOTS ecosystem. However, these are
 separate generator functions with different parameterizations and rate-control
 semantics. `tsgap` instead exposes mechanism and pattern as orthogonal arguments
-to one API, so the same MCAR, MAR, or MNAR mechanism can be evaluated under any
-supported temporal pattern while preserving target-feature constraints and
-pre-existing missing values.
+to one API for its general temporal patterns, so MCAR, MAR, or MNAR mechanisms
+can be evaluated under scattered, block, monotone, decay, or Markov missingness
+while preserving target-feature constraints and pre-existing missing values.
 
 BenchPOTS [@du2023pypots] works at a different layer of the workflow. It
 standardizes dataset loading, train/validation/test preparation, and task
@@ -160,6 +167,7 @@ reproducibility guarantees beyond manual seed management.
 | Monotone pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
 | Temporal decay pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
 | Markov chain pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
+| Gilbert-Elliott burst-loss pattern | MCAR only | $\times$ | $\times$ | $\times$ | $\times$ |
 | Unified mechanism--pattern API | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
 | Target-rate control over eligible entries | $\checkmark$ | Partial | Partial | Partial | $\times$ |
 | Weighted multi-driver MAR | $\checkmark$ | $\times$ | $\times$ | $\checkmark$ | $\times$ |
@@ -175,8 +183,9 @@ conceptual distinction that is well-established in the missing data literature
 but not enforced in existing software: *why* data is missing (the probabilistic
 relationship between values and missingness) is orthogonal to *how* it is missing
 (the temporal structure of the gaps). By making these two axes independently
-configurable, `tsgap` supports evaluation across all 15 mechanism-pattern
-combinations through a single function call.
+configurable, `tsgap` supports evaluation across mechanism-pattern combinations
+through a single function call while making restricted cases explicit, such as
+the MCAR-only Gilbert-Elliott pattern.
 
 The library's architecture consists of three modules:
 
@@ -194,14 +203,25 @@ user-specified weights, $X_{i,k}$ is the value of driver dimension $k$ at
 timestep $i$, and $\mu_k$ and $\sigma_k$ are its mean and standard deviation.
 
 **Patterns** (`patterns.py`) reshape the temporal structure of the
-mechanism-generated mask. Five patterns are implemented: *pointwise* (scattered
+mechanism-generated mask. Six patterns are implemented: *pointwise* (scattered
 individual points), *block* (contiguous missing segments), *monotone* (once
 missing, stays missing), *temporal decay* (missingness increases over time via a
-sigmoid ramp), and *Markov chain* (a 2-state chain per series with transition
-probabilities calibrated from the stationary distribution). Patterns receive the
-mechanism's binary mask and redistribute its missing positions according to the
-desired temporal structure while preserving pre-existing missing values,
-target-feature eligibility, and consistency between the returned data and mask.
+sigmoid ramp), *Markov chain* (a 2-state chain per series with transition
+probabilities calibrated from the stationary distribution), and
+*Gilbert-Elliott* burst loss [@gilbert1960capacity; @elliott1963estimates].
+The first five patterns can be combined with MCAR, MAR, or MNAR mechanisms.
+Gilbert-Elliott is intentionally restricted to MCAR because it models an
+independent channel-loss process with hidden good and bad states rather than a
+driver- or value-dependent mechanism.
+
+For the general patterns, the mechanism first generates a binary mask and the
+pattern then reshapes its temporal arrangement while preserving pre-existing
+missing values, target-feature eligibility, and consistency between the returned
+data and mask. For temporal patterns, MAR/MNAR combinations should therefore be
+interpreted as mechanism-informed missingness budgets reshaped in time, rather
+than as pure pointwise MAR/MNAR propensities after reshaping. The documentation
+separates these cases by distinguishing exact missing-count control, calibrated
+pointwise probabilities, and expected-rate burst processes.
 For the block pattern, users may request fixed sample lengths with `block_len`
 or relative lengths with `block_frac`; passing a range such as
 `block_frac=(0.02, 0.10)` samples a new block length uniformly within that range
@@ -235,22 +255,26 @@ without reliance on global RNG state.
 
 `tsgap` was developed at the University of Arizona to investigate the
 sensitivity of time-series imputation algorithms to different missingness
-structures. By providing reproducible missingness generation across all
-mechanism-pattern combinations, `tsgap` lets researchers benchmark statistical,
+structures. By providing reproducible missingness generation across supported
+mechanism-pattern conditions, `tsgap` lets researchers benchmark statistical,
 machine learning, and deep learning imputation methods under controlled
-conditions. This responds to a gap in the imputation literature, where
-evaluations are typically limited to MCAR-only masking at low missing rates
+conditions. This addresses a gap in the imputation literature, where
+evaluations are often limited to MCAR-only masking at low missing rates
 [@kazijevs2023deep; @cao2018brits]. The library is pip-installable
 (`pip install tsgap`), includes focused documentation with mathematical
 descriptions of all mechanisms and patterns, and provides a runnable imputation
 benchmark comparing simple baselines across representative missingness
-scenarios. The current release is archived with a Zenodo DOI [@tsgapzenodo].
-Its 118 automated tests cover mechanism-pattern combinations, edge cases,
+scenarios. The current release (0.7.0) is archived with a Zenodo DOI
+[@tsgapzenodo].
+The current test suite includes 140 automated tests covering
+mechanism-pattern combinations, edge cases,
 extreme rate calibration accuracy (1%--90%), numerical stability,
 reproducibility, eligibility guarantees, and behavioral checks such as MAR
 direction, MNAR tail targeting, block run lengths, scale-aware block fractions,
-variable-length blocks, decay timing, and Markov burst persistence. Continuous
-integration runs on Python 3.9--3.13 with Ruff linting and coverage reporting.
+variable-length blocks, decay timing, Markov burst persistence,
+Gilbert-Elliott rate feasibility, MCAR-only enforcement, leaky burst behavior,
+aliases, 3D support, NaN preservation, and target-dimension handling.
+Continuous integration runs on Python 3.9--3.13 with Ruff linting and coverage reporting.
 The package is released under the MIT license and hosted on GitHub with an open
 issue tracker for community use and contribution.
 
