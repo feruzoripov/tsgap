@@ -2,6 +2,9 @@
 
 Thank you for your interest in contributing to TSGap.
 
+Please follow the project [Code of Conduct](CODE_OF_CONDUCT.md) in all project
+spaces.
+
 ## Getting Started
 
 1. Fork the repository
