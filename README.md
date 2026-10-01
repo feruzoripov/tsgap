@@ -100,6 +100,12 @@ mask == False -> missing
 
 ## Documentation
 
+The documentation is built with Sphinx from the Markdown files in `docs/`.
+After the documentation workflow runs on GitHub, the online documentation is
+available at:
+
+- [https://feruzoripov.github.io/tsgap/](https://feruzoripov.github.io/tsgap/)
+
 - [Installation](docs/installation.md)
 - [Core concepts](docs/concepts.md)
 - [Mathematical details](docs/mathematical_details.md)
@@ -107,6 +113,13 @@ mask == False -> missing
 - [Patterns](docs/patterns.md)
 - [API reference](docs/api.md)
 - [Benchmarking workflow](docs/benchmarking.md)
+
+To build the documentation locally:
+
+```bash
+pip install -e ".[docs]"
+sphinx-build -b html docs docs/_build/html
+```
 
 ## Example Use Cases
 
@@ -146,6 +159,9 @@ python examples/benchmark_imputation.py
 pytest tsgap/tests/ -v
 ```
 
+GitHub Actions runs the test suite on Python 3.9 through 3.13 and builds the
+Sphinx documentation on every pull request to `main`.
+
 ## Citation
 
 ```bibtex
@@ -162,3 +178,11 @@ pytest tsgap/tests/ -v
 ## License
 
 MIT
+
+## AI Usage Disclosure
+
+Generative AI tools, including OpenAI Codex/ChatGPT and Anthropic Claude, have
+been used to assist with code review, test generation, documentation
+organization, and manuscript drafting during development. All AI-assisted code
+and text are reviewed, tested, and validated by the package authors, who retain
+full responsibility for the project.

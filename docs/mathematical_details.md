@@ -164,7 +164,7 @@ rate calculation.
 
 The achieved artificial missing rate over eligible entries is:
 
-```math
+```{math}
 \hat{r} = \frac{\#\{i \in E : mask_i = False\}}{|E|}
 ```
 
@@ -201,13 +201,13 @@ probability of being masked.
 
 TSGap samples exactly:
 
-```math
+```{math}
 m = round(r |E|)
 ```
 
 eligible entries without replacement. If `U` is the sampled subset of `E`, then:
 
-```math
+```{math}
 mask_i =
 \begin{cases}
 False, & i \in U \\
@@ -229,25 +229,25 @@ not directly on the value being masked.
 For 2D data, if `driver_dims=[d_1, ..., d_K]`, the driver signal at timestep
 `t` is either the average driver value:
 
-```math
+```{math}
 y_t = \frac{1}{K}\sum_{k=1}^{K} X_{t,d_k}
 ```
 
 or, when `driver_weights=[w_1, ..., w_K]` is provided, a weighted driver value:
 
-```math
+```{math}
 y_t = \sum_{k=1}^{K} \tilde{w}_k X_{t,d_k}
 ```
 
 where weights are normalized:
 
-```math
+```{math}
 \tilde{w}_k = \frac{w_k}{\sum_{j=1}^{K} w_j}
 ```
 
 For 3D data, the same calculation is performed separately for each sample:
 
-```math
+```{math}
 y_{n,t} = \sum_{k=1}^{K} \tilde{w}_k X_{n,t,d_k}
 ```
 
@@ -255,13 +255,13 @@ y_{n,t} = \sum_{k=1}^{K} \tilde{w}_k X_{n,t,d_k}
 
 For 2D data, the driver signal is normalized over time:
 
-```math
+```{math}
 s_t = \frac{y_t - mean(y)}{std(y)}
 ```
 
 For 3D data, normalization is performed per sample:
 
-```math
+```{math}
 s_{n,t} = \frac{y_{n,t} - mean_t(y_{n,t})}{std_t(y_{n,t})}
 ```
 
@@ -270,7 +270,7 @@ signal to avoid division by zero.
 
 If `direction="negative"`, TSGap flips the signal:
 
-```math
+```{math}
 s \leftarrow -s
 ```
 
@@ -286,27 +286,27 @@ This means:
 TSGap converts the normalized driver signal into a missingness probability with
 a sigmoid function:
 
-```math
+```{math}
 p = \sigma(\alpha s + \beta)
 ```
 
 where:
 
-```math
+```{math}
 \sigma(x) = \frac{1}{1 + exp(-x)}
 ```
 
 `alpha` is `strength`, and `beta` is an offset calibrated by binary search.
 For MAR, TSGap also applies a probability floor:
 
-```math
+```{math}
 p = max(p, base\_rate)
 ```
 
 To prevent the floor from conflicting with low target rates, `base_rate` is
 first capped at half the requested rate:
 
-```math
+```{math}
 base\_rate \leftarrow \min\big(base\_rate,\ \max(10^{-6},\ 0.5\,r)\big)
 ```
 
@@ -320,7 +320,7 @@ at that timestep. Non-eligible entries receive probability zero.
 The offset `beta` is chosen so the mean missingness probability over eligible
 entries matches the requested rate:
 
-```math
+```{math}
 \frac{1}{|E|}\sum_{i \in E} p_i \approx r
 ```
 
@@ -332,11 +332,11 @@ numerical stability.
 
 After probabilities are computed, each eligible entry is sampled independently:
 
-```math
+```{math}
 u_i \sim Uniform(0, 1)
 ```
 
-```math
+```{math}
 mask_i =
 \begin{cases}
 False, & u_i \le p_i \\
@@ -355,13 +355,13 @@ MNAR means Missing Not At Random. Missingness depends on the value being masked.
 
 For 2D data, each feature is normalized over time:
 
-```math
+```{math}
 z_{t,d} = \frac{X_{t,d} - mean_t(X_{t,d})}{std_t(X_{t,d})}
 ```
 
 For 3D data, each sample-feature series is normalized separately:
 
-```math
+```{math}
 z_{n,t,d} = \frac{X_{n,t,d} - mean_t(X_{n,t,d})}{std_t(X_{n,t,d})}
 ```
 
@@ -372,7 +372,7 @@ to avoid division by zero.
 
 The score depends on `mnar_mode`:
 
-```math
+```{math}
 s =
 \begin{cases}
 z,      & \text{if mnar\_mode = "high"} \\
@@ -392,19 +392,19 @@ So:
 MNAR uses the same calibrated sigmoid and offset structure as MAR, but without
 the `base_rate` probability floor:
 
-```math
+```{math}
 p_i = \sigma(\alpha s_i + \beta)
 ```
 
 The offset `beta` is calibrated so:
 
-```math
+```{math}
 \frac{1}{|E|}\sum_{i \in E} p_i \approx r
 ```
 
 Then each eligible entry is sampled independently:
 
-```math
+```{math}
 mask_i = False \quad \text{if} \quad u_i \le p_i
 ```
 
@@ -435,7 +435,7 @@ contiguous runs along the time axis.
 
 Let:
 
-```math
+```{math}
 M = \#\{i \in E : mask_i = False\}
 ```
 
@@ -444,11 +444,11 @@ be the number of missing entries selected by the mechanism.
 The `block_density` parameter controls how much of this missingness is allocated
 to blocks:
 
-```math
+```{math}
 M_{block} = floor(M \cdot block\_density)
 ```
 
-```math
+```{math}
 M_{point} = M - M_{block}
 ```
 
@@ -466,7 +466,7 @@ block_len = 10
 For long time series, `block_frac` is often more meaningful. A scalar
 `block_frac=f` gives:
 
-```math
+```{math}
 L = round(T f)
 ```
 
@@ -474,17 +474,17 @@ clipped to the range `[1, T]`.
 
 For example, with `T = 30000` and `block_frac = 0.02`:
 
-```math
+```{math}
 L = round(30000 \cdot 0.02) = 600
 ```
 
 If `block_frac=(f_min, f_max)`, each block samples a new fraction:
 
-```math
+```{math}
 f_b \sim Uniform(f_{min}, f_{max})
 ```
 
-```math
+```{math}
 L_b = round(T f_b)
 ```
 
@@ -495,13 +495,13 @@ For each block, TSGap:
 1. Selects an eligible sample-feature series.
 2. Samples a start time uniformly:
 
-```math
+```{math}
 t_0 \sim UniformInteger(0, T - L_b)
 ```
 
 3. Masks eligible observed entries in:
 
-```math
+```{math}
 [t_0, t_0 + L_b)
 ```
 
@@ -519,7 +519,7 @@ eligible timesteps remain missing.
 For each sample-feature series `(n, d)`, TSGap first computes the missing
 density assigned by the mechanism:
 
-```math
+```{math}
 q_{n,d} =
 \frac{\#\{t : mask_{n,t,d} = False \text{ and } (n,t,d) \in E\}}
      {\#\{t : (n,t,d) \in E\}}
@@ -528,19 +528,19 @@ q_{n,d} =
 The global missing budget is then allocated across series in proportion to
 these densities:
 
-```math
+```{math}
 M_{n,d} \approx M \frac{q_{n,d}}{\sum_{n,d} q_{n,d}}
 ```
 
 The dropout time is:
 
-```math
+```{math}
 \tau_{n,d} = T - M_{n,d}
 ```
 
 All eligible entries from `tau` onward are masked:
 
-```math
+```{math}
 mask_{n,t,d} = False \quad \text{for all } t \ge \tau_{n,d} \text{ with } (n,t,d) \in E
 ```
 
@@ -554,32 +554,32 @@ The temporal decay pattern shifts missingness toward later timesteps.
 
 First, TSGap creates normalized time values:
 
-```math
+```{math}
 \tilde{t} \in [0, 1]
 ```
 
 Then it computes sigmoid time weights:
 
-```math
+```{math}
 w_t = \sigma(decay\_rate \cdot (\tilde{t} - decay\_center))
 ```
 
 with a small floor:
 
-```math
+```{math}
 w_t = max(w_t, 0.01)
 ```
 
 The number of missing entries selected by the mechanism is preserved:
 
-```math
+```{math}
 M = \#\{i \in E : mask_i = False\}
 ```
 
 TSGap samples `M` eligible entries without replacement with probability
 proportional to the time weight:
 
-```math
+```{math}
 P(i \text{ selected}) \propto w_{t(i)}
 ```
 
@@ -596,7 +596,7 @@ series is modeled with two states:
 
 Let:
 
-```math
+```{math}
 \pi = \frac{M}{|E|}
 ```
 
@@ -604,7 +604,7 @@ be the target missing fraction after the mechanism step.
 
 The `persist` parameter is:
 
-```math
+```{math}
 p_{persist} = P(missing_t \mid missing_{t-1})
 ```
 
@@ -612,24 +612,24 @@ It controls how likely a missing burst is to continue.
 
 TSGap computes the onset probability from the stationary distribution:
 
-```math
+```{math}
 \pi = \frac{p_{onset}}{p_{onset} + 1 - p_{persist}}
 ```
 
 Solving for `p_onset` gives:
 
-```math
+```{math}
 p_{onset} =
 \frac{\pi (1 - p_{persist})}{1 - \pi}
 ```
 
 Then each sample-feature series is simulated over time:
 
-```math
+```{math}
 P(missing_t \mid observed_{t-1}) = p_{onset}
 ```
 
-```math
+```{math}
 P(missing_t \mid missing_{t-1}) = p_{persist}
 ```
 
@@ -648,11 +648,11 @@ The Gilbert-Elliott pattern generalizes the Markov pattern into a two-state
 Each sample-feature series has a hidden state that is either good or bad. The
 state evolves as a 2-state Markov chain:
 
-```math
+```{math}
 P(bad_t \mid bad_{t-1}) = p_{persist}
 ```
 
-```math
+```{math}
 P(bad_t \mid good_{t-1}) = p_{onset}
 ```
 
@@ -660,7 +660,7 @@ Unlike the Markov pattern, the state does not directly determine missingness.
 Instead, within each state a value is missing with a state-dependent
 probability:
 
-```math
+```{math}
 P(missing \mid bad) = h \qquad P(missing \mid good) = k
 ```
 
@@ -675,32 +675,32 @@ loss", not necessarily "everything observed".
 
 Let `rho` be the target missing fraction over eligible entries:
 
-```math
+```{math}
 \rho = \frac{M}{|E|}
 ```
 
 The stationary probability of being in the bad state is:
 
-```math
+```{math}
 \pi_{bad} = \frac{p_{onset}}{p_{onset} + 1 - p_{persist}}
 ```
 
 The long-run missing rate combines both states:
 
-```math
+```{math}
 \rho = \pi_{bad}\, h + (1 - \pi_{bad})\, k
 ```
 
 Solving for the required bad-state occupancy:
 
-```math
+```{math}
 \pi_{bad} = \frac{\rho - k}{h - k}
 ```
 
 For partial missing rates, the requested rate must be feasible for the chosen
 state-loss probabilities:
 
-```math
+```{math}
 k \le \rho < h
 ```
 
@@ -709,7 +709,7 @@ returning a mask whose missing rate is constrained by `good_loss` or `bad_loss`
 rather than by the requested target. When the target is feasible, TSGap recovers
 the onset probability the same way as the Markov pattern:
 
-```math
+```{math}
 p_{onset} = \frac{\pi_{bad}\,(1 - p_{persist})}{1 - \pi_{bad}}
 ```
 
@@ -738,13 +738,13 @@ achieved rate is approximate, as with the Markov pattern.
 
 The expected missing rate is:
 
-```math
+```{math}
 E[\hat{r}] \approx \rho
 ```
 
 but the realized rate is:
 
-```math
+```{math}
 \hat{r} = \frac{\#\{i \in E : mask_i = False\}}{|E|}
 ```
 
@@ -760,25 +760,25 @@ bursty temporal process that composes with MAR or MNAR.
 
 TSGap validates the parameters before simulation:
 
-```math
+```{math}
 0 \le p_{persist} < 1
 ```
 
-```math
+```{math}
 0 < h \le 1
 ```
 
-```math
+```{math}
 0 \le k < 1
 ```
 
-```math
+```{math}
 k < h
 ```
 
 For partial missing rates:
 
-```math
+```{math}
 k \le \rho < h
 ```
 

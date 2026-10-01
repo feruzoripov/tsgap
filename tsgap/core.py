@@ -18,104 +18,39 @@ def simulate_missingness(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Simulate missingness in time-series data.
     
-    This function separates two concepts:
-    1. MECHANISM (why data is missing): MCAR, MAR, MNAR
-    2. PATTERN (how data is missing): pointwise, block
+    This function separates two concepts: the mechanism, which describes why
+    data is missing, and the pattern, which describes how missing values are
+    arranged over time.
     
     Parameters
     ----------
     X : np.ndarray
         Input data of shape (T, D) or (N, T, D)
     mechanism : str
-        Missingness mechanism (WHY data is missing):
-        - "mcar": Missing Completely At Random
-        - "mar": Missing At Random (depends on other variables)
-        - "mnar": Missing Not At Random (depends on value itself)
+        Missingness mechanism. Supported values are "mcar" (Missing Completely
+        At Random), "mar" (Missing At Random, dependent on other variables),
+        and "mnar" (Missing Not At Random, dependent on the value itself).
     missing_rate : float
         Target fraction of missing values (0.0 to 1.0)
         Applied to eligible (non-NaN) entries
     seed : int, optional
         Random seed for reproducibility
     pattern : str, optional
-        Missingness pattern (HOW data is missing):
-        - "pointwise" (default): Scattered individual points
-        - "block": Contiguous segments (sensor dropout)
-        - "monotone": Once missing, stays missing (participant dropout)
-        - "decay": Missingness increases over time (sensor degradation)
-        - "markov": Temporally dependent flickering (intermittent sensor failure)
-        - "gilbert_elliott": Bursty two-state loss with leaky good/bad periods
-          (MCAR only)
-        Aliases: "point"/"scattered" for pointwise; "contiguous" for block;
-                 "dropout" for monotone; "degradation" for decay;
-                 "flickering" for markov;
-                 "gilbert-elliott"/"gilbert"/"burst" for gilbert_elliott
+        Missingness pattern. Supported values are "pointwise" (scattered
+        individual points), "block" (contiguous segments), "monotone" (once
+        missing, stays missing), "decay" (missingness increases over time),
+        "markov" (temporally dependent flickering), and "gilbert_elliott"
+        (bursty two-state loss with leaky good/bad periods; MCAR only).
+        Aliases include "point"/"scattered" for pointwise, "contiguous" for
+        block, "dropout" for monotone, "degradation" for decay, "flickering"
+        for markov, and "gilbert-elliott"/"gilbert"/"burst" for
+        gilbert_elliott.
     **kwargs : dict
-        Mechanism-specific parameters:
-        
-        MCAR:
-            target : str or list[int]
-                "all" (default) or list of dimension indices
-        
-        MAR:
-            driver_dims : list[int], required
-                Dimensions that drive missingness
-            driver_weights : list[float], optional
-                Weights for each driver dimension (normalized to sum to 1).
-                Allows different drivers to contribute differently.
-                Default: equal weights (simple mean).
-            target : str or list[int]
-                "all" (default) or list of dimension indices to mask
-            strength : float, default=2.0
-                Dependency strength
-            base_rate : float, default=0.01
-                Minimum probability
-            direction : str, default="positive"
-                "positive" or "negative"
-        
-        MNAR:
-            mnar_mode : str, default="extreme"
-                "high", "low", or "extreme"
-            target : str or list[int]
-                "all" (default) or list of dimension indices to mask
-            strength : float, default=2.0
-                Dependency strength
-        
-        Pattern-specific parameters:
-        
-        Block pattern:
-            block_len : int, default=10
-                Length of each missing block (in timesteps). Used by default.
-            block_frac : float or tuple[float, float], optional
-                Relative block length as fraction of time axis (0.0, 1.0].
-                If a tuple is provided, a new fraction is sampled uniformly
-                from (min_frac, max_frac) for each block. If provided,
-                overrides block_len. Recommended for long time series.
-            block_density : float, default=1.0
-                Fraction of missingness in blocks (0.0 to 1.0). Set below
-                1.0 to keep some pointwise missing values.
-        
-        Decay pattern:
-            decay_rate : float, default=3.0
-                Steepness of temporal ramp (higher = sharper transition)
-            decay_center : float, default=0.7
-                Normalized time (0-1) where missingness reaches 50%
-        
-        Markov pattern:
-            persist : float, default=0.8
-                Probability of staying missing once entered [0, 1).
-                Higher = longer bursts.
-
-        Gilbert-Elliott pattern:
-            Supports mechanism="mcar" only.
-            persist : float, default=0.8
-                Probability of staying in the bad state [0, 1).
-                Higher = longer bursts.
-            bad_loss : float, default=1.0
-                Probability a value is missing while in the bad state (0, 1].
-            good_loss : float, default=0.0
-                Probability a value is missing while in the good state [0, 1).
-                Must be strictly less than bad_loss. For partial missing rates,
-                the target rate must satisfy good_loss <= rate < bad_loss.
+        Mechanism- and pattern-specific parameters. Common options include
+        target, driver_dims, driver_weights, strength, base_rate, direction,
+        mnar_mode, block_len, block_frac, block_density, decay_rate,
+        decay_center, persist, bad_loss, and good_loss. See the user
+        documentation for pattern-specific details and constraints.
     
     Returns
     -------
