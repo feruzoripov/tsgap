@@ -1,5 +1,13 @@
 # API Reference
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 ## `simulate_missingness`
 
 ```python

@@ -1,5 +1,13 @@
 # Mechanisms
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 Mechanisms describe the relationship between the data and the probability that
 a value is missing.
 

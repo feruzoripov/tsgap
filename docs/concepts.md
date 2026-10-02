@@ -1,5 +1,13 @@
 # Core Concepts
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 TSGap separates missing-data simulation into two composable parts:
 
 - **Mechanisms** describe why data is missing.
