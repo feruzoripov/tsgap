@@ -1,5 +1,13 @@
 # Mathematical Details
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 This page describes how TSGap turns a complete time-series array into
 `(X_missing, mask)`. The goal is to make the probability calculations and mask
 construction explicit enough for reproducible benchmarking.

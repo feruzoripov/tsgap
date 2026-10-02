@@ -1,5 +1,13 @@
 # Benchmarking Workflow
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 TSGap is designed for controlled imputation benchmarking: start with complete
 data, inject known missingness, run an imputation method, then evaluate only on
 the artificially masked values.

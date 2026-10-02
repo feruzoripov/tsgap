@@ -1,5 +1,13 @@
 # Patterns
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 Patterns describe the temporal arrangement of missing values. Most patterns can
 be combined with any mechanism. `gilbert_elliott` is MCAR-only because it models
 an independent burst-loss channel rather than value- or driver-dependent

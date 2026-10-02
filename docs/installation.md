@@ -1,5 +1,13 @@
 # Installation
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 TSGap requires Python 3.9 or newer and NumPy 1.19 or newer.
 
 ## From PyPI
