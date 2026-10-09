@@ -1,5 +1,9 @@
 # TSGap
 
+[![Tests](https://github.com/feruzoripov/tsgap/actions/workflows/python-package.yml/badge.svg)](https://github.com/feruzoripov/tsgap/actions/workflows/python-package.yml)
+[![Docs](https://github.com/feruzoripov/tsgap/actions/workflows/docs.yml/badge.svg)](https://feruzoripov.github.io/tsgap/)
+[![PyPI](https://img.shields.io/pypi/v/tsgap)](https://pypi.org/project/tsgap/)
+[![Python versions](https://img.shields.io/pypi/pyversions/tsgap)](https://pypi.org/project/tsgap/)
 [![DOI](https://zenodo.org/badge/1163640402.svg)](https://doi.org/10.5281/zenodo.21365453)
 
 A Python library for simulating realistic missingness in time-series data for imputation benchmarking.
