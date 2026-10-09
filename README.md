@@ -16,6 +16,25 @@ controlled missing-data scenarios for evaluating imputation methods.
 `gilbert_elliott` is MCAR-only because it models an independent burst-loss
 channel rather than value- or driver-dependent missingness.
 
+## Who Is This For?
+
+TSGap is designed for researchers and practitioners who evaluate time-series
+imputation methods. It is especially useful in healthcare monitoring, wearable
+sensing, environmental sensing, longitudinal studies, and machine-learning
+workflows where complete data are intentionally masked to benchmark
+reconstruction quality under controlled missing-data assumptions.
+
+## How TSGap Differs From Similar Tools
+
+Related tools include PyGrinder and BenchPOTS from the PyPOTS ecosystem.
+PyGrinder provides several Python-native missingness generators, and BenchPOTS
+supports benchmarking workflows for partially observed time-series datasets.
+TSGap focuses specifically on lightweight missingness simulation for arbitrary
+NumPy arrays: it exposes missingness mechanisms and temporal patterns as
+composable axes in one API, supports scale-aware block lengths, preserves
+pre-existing NaNs and target dimensions, and documents how each
+mechanism-pattern combination controls the final mask.
+
 ![Complete data (left) vs. five mechanism+pattern combinations at 20% missing rate.](assets/before_after.png)
 
 ## Features
