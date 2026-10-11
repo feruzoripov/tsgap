@@ -13,6 +13,13 @@ be combined with any mechanism. `gilbert_elliott` is MCAR-only because it models
 an independent burst-loss channel rather than value- or driver-dependent
 missingness.
 
+`pointwise` preserves the mechanism's point-level probabilities directly. Other
+temporal patterns use the mechanism-generated mask as a missingness budget and
+then reshape that budget in time. For example, `mechanism="mar"` with
+`pattern="block"` should be interpreted as MAR-informed block missingness, not
+as every final missing point independently following the original MAR
+probability.
+
 For step-by-step formulas for each pattern, see
 [Mathematical details](mathematical_details.md).
 

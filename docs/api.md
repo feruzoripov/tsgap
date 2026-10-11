@@ -73,6 +73,11 @@ artificial missingness and `missing_rate=1` masks all eligible entries. Partial
 rates outside the feasible range defined by `good_loss` and `bad_loss` raise
 `ValueError`.
 
+For `pointwise`, MAR and MNAR dependencies apply to the final individual masked
+positions. For temporal patterns such as `block`, `decay`, `markov`, and
+`monotone`, MAR/MNAR generate a mechanism-informed missingness budget that is
+then reshaped in time by the selected pattern.
+
 ## `simulate_many_rates`
 
 ```python

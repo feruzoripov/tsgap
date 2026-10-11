@@ -143,6 +143,11 @@ shapes while keeping the same total count.
   still drop the occasional value (`good_loss`). This makes bursts look ragged
   rather than perfectly on/off.
 
+Only the pointwise pattern preserves the mechanism's individual timestamp-level
+MAR/MNAR probabilities exactly. Temporal patterns preserve a mechanism-informed
+missingness budget or relative series-level intensity, then change where the
+missing values appear so the mask has the requested temporal shape.
+
 ### Step 3: Finishing up
 
 Cells marked `False` become `NaN` in the output, pre-existing blanks stay blank,
@@ -822,7 +827,9 @@ The mechanism controls the probability landscape:
 - MAR: probability follows observed driver variables.
 - MNAR: probability follows the value being masked.
 
-The pattern controls the temporal shape:
+The pattern controls the temporal shape. Pointwise leaves the mechanism's
+individual selections unchanged. Other temporal patterns reshape the
+mechanism-informed missingness budget:
 
 - pointwise: leave selected entries scattered.
 - block: group selected entries into contiguous dropout episodes.
