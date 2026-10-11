@@ -1170,6 +1170,28 @@ class TestMARDriverWeights:
         actual_rate = (~mask).sum() / mask.size
         assert abs(actual_rate - 0.20) < 0.05
 
+    def test_mar_ignores_nan_driver_values_for_rate_calibration(self):
+        """NaNs in MAR drivers should not collapse the achieved target rate."""
+        X = np.random.default_rng(0).standard_normal((2000, 4))
+        X[:100, 0] = np.nan
+
+        _, mask = simulate_missingness(
+            X, "mar", 0.20, seed=0, driver_dims=[0], target=[1, 2, 3]
+        )
+
+        actual_rate = (~mask[:, 1:]).mean()
+        assert abs(actual_rate - 0.20) < 0.03
+
+    def test_mar_all_nan_driver_raises_clear_error(self):
+        """MAR should fail clearly when no observed driver values exist."""
+        X = np.random.default_rng(0).standard_normal((100, 4))
+        X[:, 0] = np.nan
+
+        with pytest.raises(ValueError, match="driver dimensions contain only NaN"):
+            simulate_missingness(
+                X, "mar", 0.20, seed=0, driver_dims=[0], target=[1, 2, 3]
+            )
+
 
 class TestMarkovPattern:
     """Test Markov chain temporal dependence pattern."""
