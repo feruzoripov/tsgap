@@ -18,6 +18,13 @@ structure. For example, MAR missingness can be simulated as scattered points,
 contiguous blocks, monotone dropout, late-series decay, or bursty Markov
 segments.
 
+For `pointwise`, MAR and MNAR dependencies are preserved at the individual
+timestamp-feature level. For temporal patterns such as `block`, `decay`,
+`markov`, and `monotone`, the mechanism first determines the missingness budget
+or relative series-level missingness, and the pattern then reshapes that budget
+in time. In those cases, the final individual missing positions should not be
+interpreted as pure pointwise MAR/MNAR probabilities.
+
 The Gilbert-Elliott pattern is the exception: it is MCAR-only because it models
 an independent burst-loss channel.
 
