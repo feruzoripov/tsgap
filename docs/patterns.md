@@ -207,7 +207,7 @@ Different patterns control the target rate differently:
 |---------|---------------|
 | `pointwise` with MCAR | Exact count up to rounding |
 | `pointwise` with MAR/MNAR | Calibrated probability, approximate realized rate |
-| `block` | Preserves the mechanism missing count when enough eligible positions are available |
+| `block` | Preserves the mechanism missing count when enough eligible positions are available; emits a warning if the requested block count cannot be reached |
 | `monotone` | Allocates the mechanism missing budget into dropout tails, with rounding adjustment |
 | `decay` | Resamples the mechanism missing count using temporal weights |
 | `markov` | Calibrated in expectation; realized rate is approximate |

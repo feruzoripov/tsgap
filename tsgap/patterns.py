@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Tuple, Union
 
 import numpy as np
@@ -271,7 +272,8 @@ def _add_blocks(
         return mask
 
     n_added = 0
-    max_attempts = 1000
+    estimated_blocks = int(np.ceil(n_target / max(1, block_len)))
+    max_attempts = max(1000, 20 * estimated_blocks)
     attempts = 0
     
     while n_added < n_target and attempts < max_attempts:
@@ -318,6 +320,16 @@ def _add_blocks(
                 positions = np.where(block_slice)[0]
                 mask[n_idx, t_start + positions, d_idx] = False
             n_added += n_can_add
+
+    if n_added < n_target:
+        warnings.warn(
+            "block pattern could not reach the requested missing count; "
+            f"added {n_added} of {n_target} requested block positions. "
+            "Consider increasing block_len or block_frac, reducing "
+            "block_density, or checking eligible target dimensions.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     
     return mask
 
