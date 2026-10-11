@@ -52,6 +52,7 @@ docs = [
 
 [project.urls]
 Homepage = "https://github.com/feruzoripov/tsgap"
+Documentation = "https://feruzoripov.github.io/tsgap/"
 Repository = "https://github.com/feruzoripov/tsgap"
 Issues = "https://github.com/feruzoripov/tsgap/issues"
 

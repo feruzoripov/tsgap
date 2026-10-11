@@ -35,7 +35,7 @@ composable axes in one API, supports scale-aware block lengths, preserves
 pre-existing NaNs and target dimensions, and documents how each
 mechanism-pattern combination controls the final mask.
 
-![Complete data (left) vs. five mechanism+pattern combinations at 20% missing rate.](assets/before_after.png)
+![Complete data (left) vs. five mechanism+pattern combinations at 20% missing rate.](https://raw.githubusercontent.com/feruzoripov/tsgap/main/assets/before_after.png)
 
 ## Features
 
@@ -129,13 +129,13 @@ available at:
 
 - [https://feruzoripov.github.io/tsgap/](https://feruzoripov.github.io/tsgap/)
 
-- [Installation](docs/installation.md)
-- [Core concepts](docs/concepts.md)
-- [Mathematical details](docs/mathematical_details.md)
-- [Mechanisms](docs/mechanisms.md)
-- [Patterns](docs/patterns.md)
-- [API reference](docs/api.md)
-- [Benchmarking workflow](docs/benchmarking.md)
+- [Installation](https://feruzoripov.github.io/tsgap/installation.html)
+- [Core concepts](https://feruzoripov.github.io/tsgap/concepts.html)
+- [Mathematical details](https://feruzoripov.github.io/tsgap/mathematical_details.html)
+- [Mechanisms](https://feruzoripov.github.io/tsgap/mechanisms.html)
+- [Patterns](https://feruzoripov.github.io/tsgap/patterns.html)
+- [API reference](https://feruzoripov.github.io/tsgap/api.html)
+- [Benchmarking workflow](https://feruzoripov.github.io/tsgap/benchmarking.html)
 
 To build the documentation locally:
 
@@ -162,13 +162,18 @@ X = np.random.default_rng(42).standard_normal((1000, 6))
 X_miss, mask = simulate_missingness(X, "mar", 0.20, seed=42, driver_dims=[0])
 
 X_imputed = your_imputation_method(X_miss)
-missing_idx = ~mask
+evaluation_idx = ~mask & ~np.isnan(X)
 
-rmse = np.sqrt(np.mean((X[missing_idx] - X_imputed[missing_idx]) ** 2))
-mae = np.mean(np.abs(X[missing_idx] - X_imputed[missing_idx]))
+rmse = np.sqrt(np.mean((X[evaluation_idx] - X_imputed[evaluation_idx]) ** 2))
+mae = np.mean(np.abs(X[evaluation_idx] - X_imputed[evaluation_idx]))
 ```
 
-See [docs/benchmarking.md](docs/benchmarking.md) for a complete baseline workflow.
+Use `~mask` when the original data are complete. If the original data already
+contain NaNs, `~mask & ~np.isnan(X)` evaluates only values that TSGap
+artificially hid.
+
+See the [benchmarking workflow](https://feruzoripov.github.io/tsgap/benchmarking.html)
+for a complete baseline workflow.
 
 The repository also includes a runnable benchmark example:
 
@@ -184,6 +189,12 @@ pytest tsgap/tests/ -v
 
 GitHub Actions runs the test suite on Python 3.9 through 3.13 and builds the
 Sphinx documentation on every pull request to `main`.
+
+## Contributing
+
+Contributions are welcome. See
+[CONTRIBUTING.md](https://github.com/feruzoripov/tsgap/blob/main/CONTRIBUTING.md)
+for development setup, testing, and pull request guidelines.
 
 ## Citation
 
