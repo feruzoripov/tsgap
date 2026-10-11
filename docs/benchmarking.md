@@ -31,9 +31,9 @@ for d in range(X.shape[1]):
     fill = np.nanmean(X_imputed[:, d])
     X_imputed[np.isnan(X_imputed[:, d]), d] = fill
 
-missing_idx = ~mask
-rmse = np.sqrt(np.mean((X[missing_idx] - X_imputed[missing_idx]) ** 2))
-mae = np.mean(np.abs(X[missing_idx] - X_imputed[missing_idx]))
+evaluation_idx = ~mask & ~np.isnan(X)
+rmse = np.sqrt(np.mean((X[evaluation_idx] - X_imputed[evaluation_idx]) ** 2))
+mae = np.mean(np.abs(X[evaluation_idx] - X_imputed[evaluation_idx]))
 
 print({"rmse": rmse, "mae": mae})
 ```
@@ -84,5 +84,7 @@ For reproducible benchmark reports, record:
 - imputation method
 - metric and evaluation subset
 
-The most common evaluation subset is `~mask`, which contains values that TSGap
-artificially hid.
+If the original input was complete, the evaluation subset can be `~mask`, which
+contains values that TSGap artificially hid. If the original input already
+contained NaNs, use `~mask & ~np.isnan(X)` so pre-existing gaps are not included
+in RMSE, MAE, or other reconstruction metrics.
