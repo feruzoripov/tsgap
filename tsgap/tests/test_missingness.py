@@ -329,6 +329,17 @@ class TestBlockMissingness:
         assert np.median(run_lengths) >= 600
         assert np.percentile(run_lengths, 95) >= 600
 
+    def test_block_pattern_reaches_rate_on_large_arrays(self):
+        """Block placement should scale beyond the old fixed attempt cap."""
+        X = np.zeros((20000, 10))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.30, seed=0, pattern="block", block_len=10
+        )
+
+        actual_rate = (~mask).mean()
+        assert abs(actual_rate - 0.30) < 0.01
+
 
 class TestReproducibility:
     """Test seed reproducibility."""
