@@ -56,6 +56,12 @@ X_missing, mask = simulate_missingness(
 )
 ```
 
+If a driver value is already `NaN`, TSGap ignores that value when constructing
+the driver signal. Timesteps with no observed driver value receive a neutral
+driver score after normalization, so pre-existing driver gaps do not turn the
+missingness probability into `NaN` or collapse the requested target rate. If all
+selected driver dimensions are entirely `NaN`, MAR raises a clear `ValueError`.
+
 Parameters:
 
 | Parameter | Default | Description |

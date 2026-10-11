@@ -124,6 +124,71 @@ def _calibrate_offset(
     return np.clip((offset_low + offset_high) / 2, -50, 50)
 
 
+def _compute_mar_driver(
+    X: np.ndarray,
+    driver_dims: list[int],
+    driver_weights: list[float] | None,
+) -> np.ndarray:
+    """Compute a MAR driver signal while ignoring NaNs in driver dimensions."""
+    if X.ndim == 2:
+        driver_values = X[:, driver_dims]
+        axis = 1
+        keepdims = True
+        weight_shape = (1, -1)
+    else:
+        driver_values = X[:, :, driver_dims]
+        axis = 2
+        keepdims = True
+        weight_shape = (1, 1, -1)
+
+    observed = ~np.isnan(driver_values)
+    if not observed.any():
+        raise ValueError(
+            "MAR driver dimensions contain only NaN values; at least one "
+            "observed driver value is required."
+        )
+
+    if driver_weights is None:
+        driver_sum = np.nansum(driver_values, axis=axis, keepdims=keepdims)
+        observed_count = observed.sum(axis=axis, keepdims=keepdims)
+        return np.divide(
+            driver_sum,
+            observed_count,
+            out=np.full_like(driver_sum, np.nan, dtype=float),
+            where=observed_count > 0,
+        )
+
+    weights = np.array(driver_weights, dtype=float).reshape(weight_shape)
+    weighted_values = np.where(observed, driver_values * weights, 0.0)
+    observed_weight = np.where(observed, weights, 0.0).sum(
+        axis=axis, keepdims=keepdims
+    )
+    weighted_sum = weighted_values.sum(axis=axis, keepdims=keepdims)
+    return np.divide(
+        weighted_sum,
+        observed_weight,
+        out=np.full_like(weighted_sum, np.nan, dtype=float),
+        where=observed_weight > 0,
+    )
+
+
+def _normalize_mar_driver(driver: np.ndarray, axis=None) -> np.ndarray:
+    """Normalize MAR driver values and assign neutral scores where missing."""
+    if axis is None:
+        driver_std = np.nanstd(driver)
+        if driver_std > 1e-10:
+            driver_norm = (driver - np.nanmean(driver)) / driver_std
+        else:
+            driver_norm = np.zeros_like(driver, dtype=float)
+    else:
+        driver_means = np.nanmean(driver, axis=axis, keepdims=True)
+        driver_stds = np.nanstd(driver, axis=axis, keepdims=True)
+        driver_stds = np.where(driver_stds > 1e-10, driver_stds, 1.0)
+        driver_norm = (driver - driver_means) / driver_stds
+
+    return np.nan_to_num(driver_norm, nan=0.0)
+
+
 def apply_mcar(
     X: np.ndarray,
     missing_rate: float,
@@ -332,34 +397,14 @@ def apply_mar(
         mask[existing_nans] = False
         return mask
     
-    # Compute driver signal (weighted linear combination)
+    # Compute driver signal (weighted linear combination). Missing driver
+    # values are ignored; timesteps with no observed driver value receive a
+    # neutral normalized score after calibration.
+    driver = _compute_mar_driver(X, driver_dims, driver_weights)
     if X.ndim == 2:
-        if driver_weights is None:
-            driver = X[:, driver_dims].mean(axis=1, keepdims=True)
-        else:
-            w = np.array(driver_weights)
-            driver = (X[:, driver_dims] * w[np.newaxis, :]).sum(
-                axis=1, keepdims=True
-            )
-        # Normalize globally for 2D
-        driver_std = np.nanstd(driver)
-        if driver_std > 1e-10:
-            driver_norm = (driver - np.nanmean(driver)) / driver_std
-        else:
-            driver_norm = np.zeros_like(driver)
+        driver_norm = _normalize_mar_driver(driver)
     else:  # 3D (N, T, D)
-        if driver_weights is None:
-            driver = X[:, :, driver_dims].mean(axis=2, keepdims=True)
-        else:
-            w = np.array(driver_weights)
-            driver = (X[:, :, driver_dims] * w[np.newaxis, np.newaxis, :]).sum(
-                axis=2, keepdims=True
-            )
-        # Vectorized per-participant normalization for 3D
-        driver_means = np.nanmean(driver, axis=1, keepdims=True)
-        driver_stds = np.nanstd(driver, axis=1, keepdims=True)
-        driver_stds = np.where(driver_stds > 1e-10, driver_stds, 1.0)
-        driver_norm = (driver - driver_means) / driver_stds
+        driver_norm = _normalize_mar_driver(driver, axis=1)
     
     # Compute probabilities using sigmoid
     if direction == "negative":
