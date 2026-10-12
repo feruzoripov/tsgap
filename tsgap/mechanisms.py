@@ -52,6 +52,49 @@ def _get_eligible_mask(
     return eligible
 
 
+def _resolve_mar_target(
+    target: str | list[int] | None,
+    driver_dims: list[int],
+    n_dims: int,
+    allow_self_masking: bool = False
+) -> list[int]:
+    """Resolve MAR target dimensions and prevent accidental self-masking."""
+    if target is None:
+        target_dims = [d for d in range(n_dims) if d not in set(driver_dims)]
+        if not target_dims:
+            raise ValueError(
+                "MAR requires at least one non-driver target dimension when "
+                "target is omitted. For one-feature data, provide another "
+                "observed driver variable or explicitly set target='all' with "
+                "allow_self_masking=True to request self-dependent hybrid "
+                "MAR/MNAR behavior."
+            )
+        return target_dims
+
+    if isinstance(target, str) and target == "all":
+        target_dims = list(range(n_dims))
+    else:
+        target_dims = list(target)
+
+    if any(d < 0 or d >= n_dims for d in target_dims):
+        raise ValueError(
+            f"target dimensions out of range. "
+            f"Got {target_dims}, but data has {n_dims} dimensions (0-{n_dims-1})"
+        )
+
+    overlap = sorted(set(driver_dims) & set(target_dims))
+    if overlap and not allow_self_masking:
+        raise ValueError(
+            "MAR target dimensions must not overlap driver_dims because "
+            "self-dependent masking is MNAR/hybrid for the overlapping "
+            f"dimensions. Overlap: {overlap}. Set target to non-driver "
+            "dimensions, or set allow_self_masking=True to request this "
+            "behavior explicitly."
+        )
+
+    return target_dims
+
+
 def _calibrate_offset(
     compute_rate_fn,
     target_rate: float,
@@ -274,10 +317,11 @@ def apply_mar(
     existing_nans: np.ndarray,
     driver_dims: list[int] | None = None,
     driver_weights: list[float] | None = None,
-    target: str | list[int] = "all",
+    target: str | list[int] | None = None,
     strength: float = 2.0,
     base_rate: float = 0.01,
     direction: str = "positive",
+    allow_self_masking: bool = False,
     rng: np.random.Generator | None = None,
     **kwargs
 ) -> np.ndarray:
@@ -313,14 +357,20 @@ def apply_mar(
         Weights for each driver dimension. Must have same length as
         driver_dims. Weights are normalized to sum to 1.
         Default: equal weights (simple mean).
-    target : str or list[int]
-        "all" (default) or list of dimension indices to mask
+    target : str or list[int], optional
+        Dimensions to mask. By default, MAR masks all non-driver dimensions.
+        Explicit overlap with driver_dims is rejected unless
+        allow_self_masking=True.
     strength : float
         Dependency strength (higher = stronger dependency, must be >= 0)
     base_rate : float
         Minimum probability to avoid all-zeros (should be < missing_rate)
     direction : str
         "positive" (high driver -> high missing) or "negative"
+    allow_self_masking : bool
+        If True, permit target dimensions to overlap driver_dims. Overlapping
+        dimensions have self-dependent MNAR/hybrid behavior and are not strict
+        MAR for those dimensions.
     rng : np.random.Generator, optional
         Random number generator for reproducibility
     
@@ -369,6 +419,10 @@ def apply_mar(
             f"driver_dims out of range. "
             f"Got {driver_dims}, but data has {n_dims} dimensions (0-{n_dims-1})"
         )
+
+    target = _resolve_mar_target(
+        target, driver_dims, n_dims, allow_self_masking=allow_self_masking
+    )
     
     # Early return for edge cases
     if missing_rate <= 0:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .mechanisms import MECHANISMS, _get_eligible_mask
+from .mechanisms import MECHANISMS, _get_eligible_mask, _resolve_mar_target
 from .patterns import PATTERNS
 
 
@@ -48,9 +48,9 @@ def simulate_missingness(
     **kwargs : dict
         Mechanism- and pattern-specific parameters. Common options include
         target, driver_dims, driver_weights, strength, base_rate, direction,
-        mnar_mode, block_len, block_frac, block_density, decay_rate,
-        decay_center, persist, bad_loss, and good_loss. See the user
-        documentation for pattern-specific details and constraints.
+        allow_self_masking, mnar_mode, block_len, block_frac, block_density,
+        decay_rate, decay_center, persist, bad_loss, and good_loss. See the
+        user documentation for pattern-specific details and constraints.
     
     Returns
     -------
@@ -130,12 +130,26 @@ def simulate_missingness(
     
     # Identify existing NaNs
     existing_nans = np.isnan(X)
-    eligible_mask = _get_eligible_mask(
-        X, existing_nans, target=kwargs.get("target", "all")
-    )
+    mechanism_kwargs = dict(kwargs)
+    target = mechanism_kwargs.get("target", "all")
+    if mechanism == "mar":
+        driver_dims = mechanism_kwargs.get("driver_dims")
+        if driver_dims is None:
+            driver_dims = [0]
+        target = _resolve_mar_target(
+            mechanism_kwargs.get("target"),
+            driver_dims,
+            X.shape[-1],
+            allow_self_masking=mechanism_kwargs.get("allow_self_masking", False),
+        )
+        mechanism_kwargs["target"] = target
+
+    eligible_mask = _get_eligible_mask(X, existing_nans, target=target)
     
     # Step 1: Generate mechanism-specific mask (WHY missing)
-    mask = MECHANISMS[mechanism](X, missing_rate, existing_nans, rng=rng, **kwargs)
+    mask = MECHANISMS[mechanism](
+        X, missing_rate, existing_nans, rng=rng, **mechanism_kwargs
+    )
     
     # Step 2: Apply pattern (HOW missing)
     mask = PATTERNS[pattern](
@@ -144,7 +158,7 @@ def simulate_missingness(
         rng=rng,
         eligible_mask=eligible_mask,
         forced_missing=existing_nans,
-        **kwargs
+        **mechanism_kwargs
     )
     
     # Apply mask

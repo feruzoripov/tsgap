@@ -47,12 +47,13 @@ Mechanism parameters:
 
 | Parameter | Mechanisms | Default | Description |
 |-----------|------------|---------|-------------|
-| `target` | all | `"all"` | Dimensions to mask |
+| `target` | all | `"all"`; MAR defaults to non-driver dimensions | Dimensions to mask |
 | `driver_dims` | MAR | `[0]` | Driver dimensions |
 | `driver_weights` | MAR | `None` | Per-driver weights |
 | `strength` | MAR, MNAR | `2.0` | Dependency strength |
 | `base_rate` | MAR | `0.01` | Minimum probability floor |
 | `direction` | MAR | `"positive"` | Driver direction |
+| `allow_self_masking` | MAR | `False` | Allow target/driver overlap for explicit hybrid behavior |
 | `mnar_mode` | MNAR | `"extreme"` | MNAR scoring mode |
 
 Pattern parameters:

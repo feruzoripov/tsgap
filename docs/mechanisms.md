@@ -35,7 +35,9 @@ Parameters:
 ## MAR
 
 `mar` means Missing At Random. Missingness depends on observed driver
-dimensions, not on the value being masked.
+dimensions, not on the value being masked. By default, MAR masks non-driver
+dimensions only, so `driver_dims=[0]` uses dimension 0 to drive missingness in
+the other dimensions while leaving dimension 0 observed.
 
 ```python
 X_missing, mask = simulate_missingness(
@@ -62,16 +64,26 @@ driver score after normalization, so pre-existing driver gaps do not turn the
 missingness probability into `NaN` or collapse the requested target rate. If all
 selected driver dimensions are entirely `NaN`, MAR raises a clear `ValueError`.
 
+If `target` is provided explicitly, it must not overlap `driver_dims`. Masking a
+driver dimension according to its own value is self-dependent missingness, which
+is MNAR/hybrid behavior for that dimension rather than strict MAR. To request
+that behavior intentionally, pass `allow_self_masking=True`.
+
+For one-feature arrays, the default MAR configuration raises a clear error
+because there is no separate observed driver that can explain missingness in a
+target variable.
+
 Parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `driver_dims` | `[0]` | Dimensions that drive missingness |
 | `driver_weights` | `None` | Optional non-negative weights for drivers |
-| `target` | `"all"` | Dimensions to mask, or `"all"` |
+| `target` | non-driver dimensions | Dimensions to mask, or `"all"` |
 | `strength` | `2.0` | Dependency strength, must be non-negative |
 | `base_rate` | `0.01` | Minimum probability floor |
 | `direction` | `"positive"` | `"positive"` or `"negative"` driver relationship |
+| `allow_self_masking` | `False` | Permit target/driver overlap for explicit hybrid behavior |
 
 ## MNAR
 
