@@ -92,8 +92,69 @@ class TestMAR:
             X, "mar", target_rate, seed=42, driver_dims=[0]
         )
         
-        actual_rate = (~mask).sum() / mask.size
+        assert mask[:, 0].all()
+        actual_rate = (~mask[:, 1:]).mean()
         assert abs(actual_rate - target_rate) < 0.05  # Within 5%
+
+    def test_default_target_excludes_driver_dimensions(self):
+        """Default MAR targets non-driver dimensions only."""
+        X = np.random.default_rng(1).standard_normal((1000, 3))
+
+        _, mask = simulate_missingness(
+            X, "mar", 0.25, seed=2, strength=8.0, driver_dims=[0]
+        )
+
+        assert mask[:, 0].all()
+        assert (~mask[:, 1:]).mean() > 0
+
+    def test_explicit_driver_target_overlap_raises(self):
+        """Explicit MAR self-masking should require opt-in."""
+        X = np.random.default_rng(1).standard_normal((100, 2))
+
+        with pytest.raises(ValueError, match="must not overlap driver_dims"):
+            simulate_missingness(
+                X, "mar", 0.25, seed=2, driver_dims=[0], target="all"
+            )
+
+        with pytest.raises(ValueError, match="must not overlap driver_dims"):
+            simulate_missingness(
+                X, "mar", 0.25, seed=2, driver_dims=[0], target=[0]
+            )
+
+    def test_allow_self_masking_opt_in(self):
+        """Users can explicitly request hybrid MAR/MNAR self-masking."""
+        X = np.random.default_rng(1).standard_normal((1000, 2))
+
+        _, mask = simulate_missingness(
+            X,
+            "mar",
+            0.25,
+            seed=2,
+            driver_dims=[0],
+            target="all",
+            allow_self_masking=True,
+        )
+
+        assert (~mask[:, 0]).mean() > 0
+        assert (~mask[:, 1]).mean() > 0
+
+    def test_one_feature_mar_requires_explicit_self_masking(self):
+        """Single-feature MAR cannot be strict MAR without another driver."""
+        X = np.random.default_rng(1).standard_normal((100, 1))
+
+        with pytest.raises(ValueError, match="at least one non-driver target"):
+            simulate_missingness(X, "mar", 0.25, seed=2, driver_dims=[0])
+
+        _, mask = simulate_missingness(
+            X,
+            "mar",
+            0.25,
+            seed=2,
+            driver_dims=[0],
+            target="all",
+            allow_self_masking=True,
+        )
+        assert (~mask).mean() > 0
     
     def test_dependency_on_driver(self):
         """MAR missingness should depend on driver dimension."""
@@ -842,7 +903,7 @@ class TestExtremeRates:
     def test_mar_extreme_rates(self, rate):
         X = np.random.default_rng(42).standard_normal((200, 5))
         _, mask = simulate_missingness(X, "mar", rate, seed=42, driver_dims=[0])
-        actual = (~mask).sum() / mask.size
+        actual = (~mask[:, 1:]).mean()
         assert abs(actual - rate) < 0.05
 
     @pytest.mark.parametrize("rate", [0.01, 0.05, 0.50, 0.90])
@@ -1057,7 +1118,7 @@ class TestMARDriverWeights:
             driver_dims=[0, 1], driver_weights=[0.8, 0.2]
         )
 
-        actual_rate = (~mask).sum() / mask.size
+        actual_rate = (~mask[:, 2:]).mean()
         assert abs(actual_rate - 0.20) < 0.05
 
     def test_driver_weights_normalized(self):
@@ -1167,7 +1228,7 @@ class TestMARDriverWeights:
         )
 
         assert mask.shape == X.shape
-        actual_rate = (~mask).sum() / mask.size
+        actual_rate = (~mask[:, :, 2:]).mean()
         assert abs(actual_rate - 0.20) < 0.05
 
     def test_mar_ignores_nan_driver_values_for_rate_calibration(self):

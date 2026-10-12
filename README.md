@@ -74,7 +74,8 @@ X = np.random.default_rng(42).standard_normal((1000, 6))
 # MCAR: 15% scattered missing values
 X_miss, mask = simulate_missingness(X, "mcar", 0.15, seed=42)
 
-# MAR: dimension 0 determines the missingness budget, then block reshapes it
+# MAR: dimension 0 drives missingness in non-driver dimensions, then block
+# reshapes the selected missingness budget
 X_miss, mask = simulate_missingness(
     X, "mar", 0.25, seed=42,
     pattern="block", driver_dims=[0], block_len=10

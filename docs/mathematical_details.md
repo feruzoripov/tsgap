@@ -237,6 +237,19 @@ entries before any temporal pattern is applied.
 MAR means Missing At Random. Missingness depends on observed driver variables,
 not directly on the value being masked.
 
+Let `D_driver` be the set of driver dimensions and `D_target` be the target
+dimensions eligible for masking. If `target` is omitted, TSGap uses:
+
+```{math}
+D_{target} = \{0,\ldots,D-1\} \setminus D_{driver}
+```
+
+This keeps the driver variables observed by default. If an explicit `target`
+overlaps `driver_dims`, TSGap raises a `ValueError` unless
+`allow_self_masking=True`. Overlap means the value in a driver dimension helps
+decide whether that same value is missing, which is MNAR/hybrid behavior for the
+overlapping dimensions rather than strict MAR.
+
 ### Driver Signal
 
 For 2D data, if `driver_dims=[d_1, ..., d_K]`, the driver signal at timestep
