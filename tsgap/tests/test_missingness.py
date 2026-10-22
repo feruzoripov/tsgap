@@ -1268,6 +1268,35 @@ class TestMarkovPattern:
         actual_rate = (~mask).sum() / mask.size
         assert abs(actual_rate - 0.20) < 0.05
 
+    def test_markov_rejects_infeasible_partial_rate(self):
+        """Markov should not silently clip an infeasible onset probability."""
+        X = np.random.default_rng(7).standard_normal((1000, 2))
+
+        with pytest.raises(ValueError, match=r"partial rates must be <= 0\.8333"):
+            simulate_missingness(
+                X,
+                "mcar",
+                0.95,
+                seed=8,
+                pattern="markov",
+                persist=0.8,
+            )
+
+    def test_markov_feasible_high_rate(self):
+        """A high rate below the feasibility ceiling remains supported."""
+        X = np.random.default_rng(7).standard_normal((20000, 2))
+
+        _, mask = simulate_missingness(
+            X,
+            "mcar",
+            0.80,
+            seed=8,
+            pattern="markov",
+            persist=0.8,
+        )
+
+        assert abs((~mask).mean() - 0.80) < 0.02
+
     def test_markov_creates_bursts(self):
         """Higher persist should create longer missing bursts."""
         X = np.random.default_rng(42).standard_normal((500, 5))
