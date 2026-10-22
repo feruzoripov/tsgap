@@ -137,8 +137,21 @@ Parameters:
 |-----------|---------|-------------|
 | `persist` | `0.8` | Probability of staying missing, in `[0, 1)` |
 
-Rate control: calibrated in expectation. The realized missing rate is
-approximate because each series is sampled from a Markov chain.
+For a partial target missing rate `r`, the implied onset probability must not
+exceed 1. Therefore, the configuration must satisfy:
+
+```{math}
+r \le \frac{1}{2 - persist}
+```
+
+TSGap raises `ValueError` when a partial target rate exceeds this limit instead
+of silently returning a lower rate. For example, `persist=0.8` supports partial
+rates up to approximately `0.8333`; requesting `0.95` is infeasible. A target
+rate of `1.0` is supported as an explicit all-missing special case.
+
+For feasible configurations, rate control is calibrated in expectation. The
+realized missing rate is approximate because each series is sampled from a
+Markov chain.
 
 Alias: `flickering`.
 
@@ -210,7 +223,7 @@ Different patterns control the target rate differently:
 | `block` | Preserves the mechanism missing count when enough eligible positions are available; emits a warning if the requested block count cannot be reached |
 | `monotone` | Allocates the mechanism missing budget into dropout tails, with rounding adjustment |
 | `decay` | Resamples the mechanism missing count using temporal weights |
-| `markov` | Calibrated in expectation; realized rate is approximate |
+| `markov` | Calibrated in expectation when `r <= 1 / (2 - persist)`; realized rate is approximate. Rate `1.0` is an all-missing special case. |
 | `gilbert_elliott` | MCAR-only. Calibrated in expectation when feasible; realized rate is approximate |
 
 ## Eligibility Guarantees

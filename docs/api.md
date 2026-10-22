@@ -74,6 +74,10 @@ artificial missingness and `missing_rate=1` masks all eligible entries. Partial
 rates outside the feasible range defined by `good_loss` and `bad_loss` raise
 `ValueError`.
 
+For the Markov pattern, partial missing rates must satisfy
+`missing_rate <= 1 / (2 - persist)`. Infeasible combinations raise
+`ValueError`; `missing_rate=1.0` remains an explicit all-missing special case.
+
 For `pointwise`, MAR and MNAR dependencies apply to the final individual masked
 positions. For temporal patterns such as `block`, `decay`, `markov`, and
 `monotone`, MAR/MNAR generate a mechanism-informed missingness budget that is

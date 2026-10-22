@@ -610,6 +610,14 @@ def apply_markov_pattern(
 
         p_onset = π_missing × (1 - p_persist) / (1 - π_missing)
 
+    Because p_onset cannot exceed 1, partial target rates must satisfy:
+
+        π_missing <= 1 / (2 - p_persist)
+
+    Infeasible partial target rates raise ValueError rather than silently
+    clipping p_onset and returning a lower rate. A target rate of 1 remains a
+    supported special case that marks every eligible position missing.
+
     The chain is simulated independently for each (sample, dimension)
     series. The mechanism mask's total missing count is preserved
     approximately.
@@ -675,9 +683,19 @@ def apply_markov_pattern(
             np.ones_like(mask, dtype=bool), eligible_mask, forced_missing
         )
 
+    max_feasible_rate = 1.0 / (2.0 - persist)
+    if pi_missing > max_feasible_rate:
+        raise ValueError(
+            "missing_rate is infeasible for the markov pattern with "
+            f"persist={persist:.4f}. Requested effective rate "
+            f"{pi_missing:.4f}, but partial rates must be <= "
+            f"{max_feasible_rate:.4f}. Increase persist or reduce "
+            "missing_rate. A rate of 1.0 is supported as an explicit "
+            "all-missing special case."
+        )
+
     p_onset = pi_missing * (1.0 - persist) / (1.0 - pi_missing)
-    # Clamp to valid probability
-    p_onset = float(np.clip(p_onset, 0.0, 1.0))
+    p_onset = float(p_onset)
 
     # Simulate Markov chain for each (sample, dimension) series
     new_mask = np.ones(shape, dtype=bool)

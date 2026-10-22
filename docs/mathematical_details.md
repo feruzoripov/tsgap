@@ -649,6 +649,18 @@ p_{onset} =
 \frac{\pi (1 - p_{persist})}{1 - \pi}
 ```
 
+Because `p_onset` is a probability, it must satisfy `p_onset <= 1`. For a
+partial target rate, this implies:
+
+```{math}
+\pi \le \frac{1}{2 - p_{persist}}
+```
+
+TSGap raises `ValueError` when this condition is violated. For example, with
+`persist=0.8`, the maximum feasible partial missing rate is approximately
+`0.8333`. The exact rate `1.0` is handled separately by marking every eligible
+position missing.
+
 Then each sample-feature series is simulated over time:
 
 ```{math}
@@ -662,9 +674,10 @@ P(missing_t \mid missing_{t-1}) = p_{persist}
 Higher `persist` values create longer missing bursts. Lower values create more
 rapid flickering.
 
-The Markov pattern controls the target rate in expectation, not as an exact
-count. The final realized rate can differ from `r`, especially when `T`, `N`, or
-`D` is small, because each sample-feature series is generated stochastically.
+For feasible partial configurations, the Markov pattern controls the target
+rate in expectation, not as an exact count. The final realized rate can differ
+from `r`, especially when `T`, `N`, or `D` is small, because each
+sample-feature series is generated stochastically.
 
 ## Gilbert-Elliott Pattern
 
