@@ -84,6 +84,10 @@ positions. For temporal patterns such as `block`, `decay`, `markov`, and
 `monotone`, MAR/MNAR generate a mechanism-informed missingness budget that is
 then reshaped in time by the selected pattern.
 
+The monotone pattern applies its allocated budget to the final eligible
+timestamps in each series. Pre-existing NaNs remain missing but do not consume
+the artificial missingness budget or define the artificial dropout point.
+
 ## `simulate_many_rates`
 
 ```python

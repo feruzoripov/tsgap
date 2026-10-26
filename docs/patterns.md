@@ -89,6 +89,12 @@ Once a feature series becomes missing, all later eligible timesteps remain
 missing. This models participant dropout, study withdrawal, or permanent sensor
 failure.
 
+When the input already contains NaNs, TSGap defines monotonicity over eligible
+timestamps. It allocates the artificial missingness budget to the last eligible
+values in each series. Pre-existing leading, trailing, or intermittent NaNs
+remain missing, but they neither consume the new budget nor determine where the
+artificial dropout begins.
+
 ```python
 X_missing, mask = simulate_missingness(
     X, "mcar", 0.20, seed=42, pattern="monotone"
@@ -230,7 +236,7 @@ Different patterns control the target rate differently:
 | `pointwise` with MCAR | Exact count up to rounding |
 | `pointwise` with MAR/MNAR | Calibrated probability, approximate realized rate |
 | `block` | Preserves the mechanism missing count when enough eligible positions are available; emits a warning if the requested block count cannot be reached |
-| `monotone` | Allocates the mechanism missing budget into dropout tails, with rounding adjustment |
+| `monotone` | Allocates the mechanism missing budget into suffixes of eligible timestamps, with exact rounding adjustment |
 | `decay` | Resamples the mechanism missing count using temporal weights |
 | `markov` | Calibrated in expectation when `r <= 1 / (2 - persist)`; realized rate is approximate. Rate `1.0` is an all-missing special case. |
 | `gilbert_elliott` | MCAR-only. Calibrated in expectation when feasible; realized rate is approximate |

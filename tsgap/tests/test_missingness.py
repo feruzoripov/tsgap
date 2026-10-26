@@ -992,6 +992,33 @@ class TestMonotonePattern:
         # Monotone reshuffles missingness, rate may shift somewhat
         assert abs(actual_rate - 0.20) < 0.10
 
+    @pytest.mark.parametrize("gap_kind", ["trailing", "leading", "intermittent"])
+    def test_monotone_allocates_over_eligible_positions(self, gap_kind):
+        """Pre-existing gaps should not consume the monotone budget."""
+        X = np.arange(100.0).reshape(100, 1)
+        if gap_kind == "trailing":
+            X[50:, 0] = np.nan
+        elif gap_kind == "leading":
+            X[:50, 0] = np.nan
+        else:
+            X[::3, 0] = np.nan
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.8, seed=2, pattern="monotone"
+        )
+
+        eligible = ~np.isnan(X[:, 0])
+        eligible_positions = np.flatnonzero(eligible)
+        expected_missing = round(0.8 * eligible.sum())
+        artificial_missing = (~mask[:, 0]) & eligible
+
+        assert artificial_missing.sum() == expected_missing
+        assert mask[np.isnan(X)].sum() == 0
+        np.testing.assert_array_equal(
+            np.flatnonzero(artificial_missing),
+            eligible_positions[-expected_missing:],
+        )
+
     def test_monotone_with_mar(self):
         """Monotone should work with MAR mechanism."""
         X = np.random.default_rng(42).standard_normal((200, 5))
