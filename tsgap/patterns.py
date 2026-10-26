@@ -344,7 +344,9 @@ def apply_monotone_pattern(
 ) -> np.ndarray:
     """Apply monotone missingness pattern.
 
-    Once a dimension goes missing at time t, it stays missing for all t' > t.
+    Once an eligible value in a dimension is artificially masked at time t,
+    every later eligible value is also masked. Pre-existing missing values do
+    not consume the artificial missingness budget or define the dropout time.
     Models participant dropout in longitudinal studies and clinical trials.
 
     The mechanism mask is used to determine *how much* each dimension should
@@ -416,9 +418,8 @@ def apply_monotone_pattern(
         if total_density < 1e-10:
             return _finalize_pattern_mask(mask, eligible_mask, forced_missing)
 
-    # For each (n, d), compute how many timesteps should be missing
-    # (i.e., T - dropout_time = allocated missing count for that series)
-    dropout_times = np.full((N, D), T, dtype=int)
+    # For each (n, d), compute how many eligible timesteps should be missing.
+    missing_counts = np.zeros((N, D), dtype=int)
     allocated = 0
 
     for n in range(N):
@@ -428,7 +429,7 @@ def apply_monotone_pattern(
             n_missing_nd = int(np.round(share * n_target_missing))
             # Clamp to valid range
             n_missing_nd = max(0, min(capacity[n, d], n_missing_nd))
-            dropout_times[n, d] = T - n_missing_nd
+            missing_counts[n, d] = n_missing_nd
             allocated += n_missing_nd
 
     # Fix rounding errors: adjust to hit exact target
@@ -442,30 +443,40 @@ def apply_monotone_pattern(
         indices.sort(key=lambda x: x[2], reverse=True)
 
         if diff > 0:
-            # Allocated too many — push dropout times later (reduce missing)
+            # Allocated too many: remove counts from high-density series first,
+            # retaining the existing adjustment priority.
             for n_i, d_i, _ in indices:
                 if diff <= 0:
                     break
-                if dropout_times[n_i, d_i] < T:
-                    dropout_times[n_i, d_i] += 1
-                    diff -= 1
+                removable = min(diff, missing_counts[n_i, d_i])
+                missing_counts[n_i, d_i] -= removable
+                diff -= removable
         else:
-            # Allocated too few — push dropout times earlier (add missing)
+            # Allocated too few: fill available capacity using the existing
+            # low-density-first adjustment priority.
             for n_i, d_i, _ in reversed(indices):
                 if diff >= 0:
                     break
-                if dropout_times[n_i, d_i] > T - capacity[n_i, d_i]:
-                    dropout_times[n_i, d_i] -= 1
-                    diff += 1
+                available = capacity[n_i, d_i] - missing_counts[n_i, d_i]
+                added = min(-diff, available)
+                missing_counts[n_i, d_i] += added
+                diff += added
 
-    # Build the monotone mask
+    if diff != 0:
+        raise ValueError(
+            "monotone pattern could not allocate the requested artificial "
+            "missingness budget over eligible positions"
+        )
+
+    # Build the monotone mask by selecting the last allocated eligible
+    # positions, rather than subtracting the count from the raw time length.
     new_mask = np.ones((N, T, D), dtype=bool)
     for n in range(N):
         for d in range(D):
-            if dropout_times[n, d] < T:
-                eligible_tail = eligible_3d[n, dropout_times[n, d]:, d]
-                tail_positions = np.where(eligible_tail)[0]
-                new_mask[n, dropout_times[n, d] + tail_positions, d] = False
+            n_missing_nd = missing_counts[n, d]
+            if n_missing_nd > 0:
+                eligible_positions = np.flatnonzero(eligible_3d[n, :, d])
+                new_mask[n, eligible_positions[-n_missing_nd:], d] = False
 
     if is_2d:
         return _finalize_pattern_mask(new_mask[0], eligible_mask, forced_missing)

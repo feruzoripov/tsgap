@@ -558,21 +558,25 @@ these densities:
 M_{n,d} \approx M \frac{q_{n,d}}{\sum_{n,d} q_{n,d}}
 ```
 
-The dropout time is:
+Let the eligible timestamps for series `(n, d)` be ordered as:
 
 ```{math}
-\tau_{n,d} = T - M_{n,d}
+t_1 < t_2 < \cdots < t_{C_{n,d}}
 ```
 
-All eligible entries from `tau` onward are masked:
+where `C_{n,d}` is the eligible capacity. TSGap masks the final `M_{n,d}`
+eligible timestamps:
 
 ```{math}
-mask_{n,t,d} = False \quad \text{for all } t \ge \tau_{n,d} \text{ with } (n,t,d) \in E
+mask_{n,t_j,d} = False
+\quad \text{for } j > C_{n,d} - M_{n,d}
 ```
 
-Non-eligible entries in the tail (pre-existing NaNs or non-target dimensions)
-are left untouched by the pattern. This preserves the mechanism's influence:
-series with higher mechanism-assigned missing density drop out earlier.
+This defines the artificial monotone suffix over eligible observations rather
+than raw time indices. Pre-existing leading, trailing, or intermittent NaNs
+remain missing, but they do not consume `M_{n,d}` or define the artificial
+dropout point. This preserves the mechanism's influence: series with higher
+mechanism-assigned missing density lose more of their eligible tail.
 
 ## Temporal Decay Pattern
 
