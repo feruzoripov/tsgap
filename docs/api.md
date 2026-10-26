@@ -67,12 +67,13 @@ Pattern parameters:
 | `decay_center` | decay | `0.7` | Normalized ramp center |
 | `persist` | markov, gilbert_elliott | `0.8` | Missing/bad-state persistence. For `gilbert_elliott`, MCAR only. |
 | `bad_loss` | gilbert_elliott | `1.0` | Loss probability in the bad state. MCAR only. |
-| `good_loss` | gilbert_elliott | `0.0` | Loss probability in the good state. MCAR only. For partial rates, `good_loss <= missing_rate < bad_loss`. |
+| `good_loss` | gilbert_elliott | `0.0` | Loss probability in the good state. MCAR only. See the feasibility constraint below. |
 
 `gilbert_elliott` supports only `mechanism="mcar"`. `missing_rate=0` adds no
 artificial missingness and `missing_rate=1` masks all eligible entries. Partial
-rates outside the feasible range defined by `good_loss` and `bad_loss` raise
-`ValueError`.
+rates must satisfy `good_loss <= missing_rate <= good_loss + (bad_loss -
+good_loss) / (2 - persist)`. Rates outside this persistence-aware feasible
+range raise `ValueError`.
 
 For the Markov pattern, partial missing rates must satisfy
 `missing_rate <= 1 / (2 - persist)`. Infeasible combinations raise

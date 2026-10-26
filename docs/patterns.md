@@ -175,11 +175,19 @@ X_missing, mask = simulate_missingness(
 Gilbert-Elliott currently supports only `mechanism="mcar"`. Use `markov` if you
 need a bursty pattern that composes with MAR or MNAR.
 
-For partial missing rates, calibration requires
-`good_loss <= missing_rate < bad_loss`; TSGap raises `ValueError` when the
-requested rate is outside that feasible range. With the defaults
-`bad_loss=1.0` and `good_loss=0.0`, the model reduces to the clean on/off
-behavior of the `markov` pattern.
+For a partial missing rate `r`, calibration requires:
+
+```{math}
+good\_loss \le r \le good\_loss +
+\frac{bad\_loss - good\_loss}{2 - persist}
+```
+
+The upper bound accounts for the fact that the good-to-bad onset probability
+cannot exceed 1. TSGap raises `ValueError` when the requested rate is outside
+this feasible range. For example, with `persist=0.5`, `bad_loss=1.0`, and
+`good_loss=0.0`, the maximum partial rate is approximately `0.6667`. With the
+default loss probabilities, the model reduces to the clean on/off behavior of
+the `markov` pattern.
 
 Gilbert-Elliott uses the MCAR mechanism mask to define the missingness budget
 over eligible entries, then reshapes that budget into a channel-style burst
@@ -201,7 +209,8 @@ Aliases: `gilbert-elliott`, `gilbert`, `burst`.
 - `good_loss` must satisfy `0 <= good_loss < bad_loss`.
 - `bad_loss` must satisfy `0 < bad_loss <= 1`.
 - `persist` must satisfy `0 <= persist < 1`.
-- For partial rates, `good_loss <= missing_rate < bad_loss` is required.
+- Partial rates must lie between `good_loss` and
+  `good_loss + (bad_loss - good_loss) / (2 - persist)`, inclusive.
 - If `missing_rate=0`, no new values are artificially masked.
 - If `missing_rate=1`, all eligible values are masked, regardless of
   `bad_loss` and `good_loss`.

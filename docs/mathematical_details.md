@@ -736,17 +736,22 @@ Solving for the required bad-state occupancy:
 \pi_{bad} = \frac{\rho - k}{h - k}
 ```
 
-For partial missing rates, the requested rate must be feasible for the chosen
-state-loss probabilities:
+Since `p_onset <= 1`, the maximum stationary bad-state probability is:
 
 ```{math}
-k \le \rho < h
+\pi_{bad,max} = \frac{1}{2 - p_{persist}}
+```
+
+Therefore, partial missing rates must satisfy the full feasibility condition:
+
+```{math}
+k \le \rho \le k + \frac{h-k}{2-p_{persist}}
 ```
 
 TSGap raises `ValueError` when this condition is not met. This avoids silently
-returning a mask whose missing rate is constrained by `good_loss` or `bad_loss`
-rather than by the requested target. When the target is feasible, TSGap recovers
-the onset probability the same way as the Markov pattern:
+returning a mask whose missing rate is constrained by the channel parameters
+rather than by the requested target. When the target is feasible, TSGap
+recovers the onset probability the same way as the Markov pattern:
 
 ```{math}
 p_{onset} = \frac{\pi_{bad}\,(1 - p_{persist})}{1 - \pi_{bad}}
@@ -755,8 +760,8 @@ p_{onset} = \frac{\pi_{bad}\,(1 - p_{persist})}{1 - \pi_{bad}}
 The feasible-rate condition has two practical consequences:
 
 - If `rho < good_loss`, even an always-good channel would lose too many values.
-- If `rho >= bad_loss`, even an always-bad channel would not lose enough values
-  for a partial-rate stochastic simulation.
+- If `rho` exceeds the persistence-dependent upper bound, attaining it would
+  require a good-to-bad onset probability greater than 1.
 
 The special edge case `rho = 1` is handled directly by masking every eligible
 entry.
@@ -818,7 +823,7 @@ k < h
 For partial missing rates:
 
 ```{math}
-k \le \rho < h
+k \le \rho \le k + \frac{h-k}{2-p_{persist}}
 ```
 
 If `rho = 0`, the mechanism step produces no new missing values, so the pattern
@@ -833,7 +838,7 @@ Examples:
 | `bad_loss=0.8`, `good_loss=0.0` | Bad periods are leaky; some values survive |
 | `bad_loss=1.0`, `good_loss=0.05` | Good periods still have occasional dropouts |
 | `missing_rate < good_loss` | Infeasible; raises `ValueError` |
-| `missing_rate >= bad_loss` for partial rates | Infeasible; raises `ValueError` |
+| `missing_rate > good_loss + (bad_loss - good_loss) / (2 - persist)` | Infeasible; raises `ValueError` |
 
 ## Reproducibility
 
