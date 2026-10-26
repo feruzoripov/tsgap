@@ -776,6 +776,17 @@ def apply_gilbert_elliott_pattern(
 
         pi_bad = (rho - good_loss) / (bad_loss - good_loss)
 
+    Since ``p_onset`` cannot exceed 1, the largest attainable stationary
+    bad-state probability is ``1 / (2 - persist)``. Therefore, partial target
+    rates must satisfy:
+
+        good_loss <= rho <= good_loss +
+            (bad_loss - good_loss) / (2 - persist)
+
+    Infeasible partial rates raise ValueError rather than silently clipping
+    ``p_onset`` and returning a lower missing rate. Target rates of 0 and 1
+    remain explicit no-missing and all-missing special cases.
+
     Parameters
     ----------
     mask : np.ndarray
@@ -839,12 +850,20 @@ def apply_gilbert_elliott_pattern(
         new_mask[eligible_mask] = False
         return _finalize_pattern_mask(new_mask, eligible_mask, forced_missing)
 
-    if not good_loss <= rho < bad_loss:
+    min_feasible_rate = good_loss
+    max_feasible_rate = good_loss + (
+        (bad_loss - good_loss) / (2.0 - persist)
+    )
+    if not min_feasible_rate <= rho <= max_feasible_rate:
         raise ValueError(
             "missing_rate is infeasible for gilbert_elliott with the chosen "
-            "good_loss and bad_loss. The target rate after the mechanism must "
-            f"satisfy good_loss <= rate < bad_loss; got rate={rho:.4f}, "
-            f"good_loss={good_loss:.4f}, bad_loss={bad_loss:.4f}."
+            "parameters. The effective target rate must satisfy "
+            f"{min_feasible_rate:.4f} <= rate <= {max_feasible_rate:.4f}; "
+            f"got rate={rho:.4f}, persist={persist:.4f}, "
+            f"bad_loss={bad_loss:.4f}, good_loss={good_loss:.4f}. "
+            "Increase persist, increase bad_loss, decrease good_loss, or "
+            "choose a rate inside the feasible range. Rates 0 and 1 are "
+            "supported as explicit special cases."
         )
 
     # Required stationary bad-state probability to achieve the target rate.
@@ -853,11 +872,8 @@ def apply_gilbert_elliott_pattern(
     # Onset probability from the stationary distribution:
     # pi_bad = p_onset / (p_onset + 1 - persist)
     # => p_onset = pi_bad * (1 - persist) / (1 - pi_bad)
-    if pi_bad >= 1.0:
-        p_onset = 1.0
-    else:
-        p_onset = pi_bad * (1.0 - persist) / (1.0 - pi_bad)
-    p_onset = float(np.clip(p_onset, 0.0, 1.0))
+    p_onset = pi_bad * (1.0 - persist) / (1.0 - pi_bad)
+    p_onset = float(p_onset)
 
     new_mask = np.ones(shape, dtype=bool)
 

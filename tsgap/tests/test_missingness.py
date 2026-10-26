@@ -1693,7 +1693,7 @@ class TestGilbertElliottPattern:
             )
 
     def test_gilbert_elliott_infeasible_high_rate(self):
-        """Should raise when target rate is at or above bad_loss."""
+        """Should raise when target rate exceeds the persistence ceiling."""
         X = np.random.default_rng(42).standard_normal((1000, 5))
 
         with pytest.raises(ValueError, match="infeasible"):
@@ -1701,6 +1701,45 @@ class TestGilbertElliottPattern:
                 X, "mcar", 0.90, seed=42, pattern="gilbert",
                 bad_loss=0.8, good_loss=0.05
             )
+
+    def test_gilbert_elliott_rejects_infeasible_persistence_rate(self):
+        """Should not clip onset probability for an infeasible target rate."""
+        X = np.random.default_rng(7).standard_normal((1000, 2))
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"0\.0000 <= rate <= 0\.6667.*rate=0\.9500, "
+                r"persist=0\.5000, bad_loss=1\.0000, good_loss=0\.0000"
+            ),
+        ):
+            simulate_missingness(
+                X,
+                "mcar",
+                0.95,
+                seed=8,
+                pattern="gilbert_elliott",
+                persist=0.5,
+                bad_loss=1.0,
+                good_loss=0.0,
+            )
+
+    def test_gilbert_elliott_feasible_high_rate(self):
+        """A high rate below the persistence ceiling remains supported."""
+        X = np.random.default_rng(7).standard_normal((20000, 2))
+
+        _, mask = simulate_missingness(
+            X,
+            "mcar",
+            0.60,
+            seed=8,
+            pattern="gilbert_elliott",
+            persist=0.5,
+            bad_loss=1.0,
+            good_loss=0.0,
+        )
+
+        assert abs((~mask).mean() - 0.60) < 0.02
 
     def test_gilbert_elliott_all_missing_edge_case(self):
         """A 100% mechanism mask should remain fully missing."""
