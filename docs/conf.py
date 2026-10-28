@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 project = "TSGap"
 author = "Feruz Oripov"
 copyright = "2026, Feruz Oripov"
-release = "0.7.0"
+release = "0.8.0"
 
 extensions = [
     "myst_parser",

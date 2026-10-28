@@ -8,7 +8,9 @@
 [Benchmarking workflow](benchmarking.md) |
 [API reference](api.md)
 
-TSGap requires Python 3.9 or newer and NumPy 1.19 or newer.
+TSGap requires Python 3.11 or newer and NumPy 1.19 or newer. The project tests
+Python 3.11 through 3.14 in continuous integration and drops Python versions
+after they reach end of life.
 
 ## From PyPI
 
