@@ -65,3 +65,8 @@ jobs:
     - name: Build Sphinx documentation
       run: |
         sphinx-build -W -b html docs docs/_build/html
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
