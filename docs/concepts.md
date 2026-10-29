@@ -13,17 +13,19 @@ TSGap separates missing-data simulation into two composable parts:
 - **Mechanisms** describe why data is missing.
 - **Patterns** describe how missingness is arranged in time.
 
-This separation lets users combine a statistical assumption with a temporal
-structure. For example, MAR missingness can be simulated as scattered points,
-contiguous blocks, monotone dropout, late-series decay, or bursty Markov
-segments.
+This separation lets users combine a statistical influence with a temporal
+structure. For example, a MAR-informed missingness budget can be represented as
+scattered points, contiguous blocks, monotone dropout, late-series decay, or
+bursty Markov segments.
 
 For `pointwise`, MAR and MNAR dependencies are preserved at the individual
 timestamp-feature level. For temporal patterns such as `block`, `decay`,
 `markov`, and `monotone`, the mechanism first determines the missingness budget
 or relative series-level missingness, and the pattern then reshapes that budget
-in time. In those cases, the final individual missing positions should not be
-interpreted as pure pointwise MAR/MNAR probabilities.
+in time. In those cases, describe the result as a temporally structured,
+mechanism-informed mask. The final individual missing positions should not be
+interpreted as a strict MAR or MNAR data-generating process unless that property
+has been established separately.
 
 The Gilbert-Elliott pattern is the exception: it is MCAR-only because it models
 an independent burst-loss channel.
@@ -65,6 +67,34 @@ This convention supports evaluation on the artificially masked entries:
 missing_idx = ~mask
 rmse = np.sqrt(np.mean((X[missing_idx] - X_imputed[missing_idx]) ** 2))
 ```
+
+If the original input contains NaNs, evaluate only artificially hidden values:
+
+```python
+evaluation_idx = ~mask & ~np.isnan(X)
+```
+
+## Missing-Rate Denominator and Guarantees
+
+`missing_rate` is the requested artificial missing fraction among eligible
+entries. Eligible entries are originally observed values in target dimensions;
+pre-existing NaNs and non-target dimensions are excluded. For eligible set `E`:
+
+```{math}
+\hat{r} = \frac{\#\{i \in E : mask_i = False\}}{|E|}
+```
+
+| Configuration | Rate guarantee |
+|---------------|----------------|
+| MCAR pointwise | Exact rounded count; rate error is at most `0.5 / \|E\|` |
+| Block, monotone, decay | Preserve the mechanism-assigned count when feasible |
+| MAR/MNAR pointwise | Calibrated in expectation; realized rate is stochastic |
+| Markov, Gilbert-Elliott | Calibrated in expectation when feasible; realized rate is stochastic |
+
+For stochastic configurations there is no deterministic per-run tolerance.
+Benchmark reports should record `hat(r)`, the random seed, and preferably
+results across multiple seeds. Infeasible temporal-model configurations raise a
+clear error instead of silently returning a substantially different rate.
 
 ## Data Shapes
 

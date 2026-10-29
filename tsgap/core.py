@@ -7,6 +7,110 @@ import numpy as np
 from .mechanisms import MECHANISMS, _get_eligible_mask, _resolve_mar_target
 from .patterns import PATTERNS
 
+_MECHANISM_PARAMETERS = {
+    "mcar": {"target"},
+    "mar": {
+        "target",
+        "driver_dims",
+        "driver_weights",
+        "strength",
+        "base_rate",
+        "direction",
+        "allow_self_masking",
+    },
+    "mnar": {"target", "mnar_mode", "strength"},
+}
+
+_PATTERN_CANONICAL_NAMES = {
+    "pointwise": "pointwise",
+    "point": "pointwise",
+    "scattered": "pointwise",
+    "block": "block",
+    "contiguous": "block",
+    "monotone": "monotone",
+    "dropout": "monotone",
+    "decay": "decay",
+    "degradation": "decay",
+    "markov": "markov",
+    "flickering": "markov",
+    "gilbert_elliott": "gilbert_elliott",
+    "gilbert-elliott": "gilbert_elliott",
+    "gilbert": "gilbert_elliott",
+    "burst": "gilbert_elliott",
+}
+
+_PATTERN_PARAMETERS = {
+    "pointwise": set(),
+    "block": {"block_len", "block_frac", "block_density"},
+    "monotone": set(),
+    "decay": {"decay_rate", "decay_center"},
+    "markov": {"persist"},
+    "gilbert_elliott": {"persist", "bad_loss", "good_loss"},
+}
+
+_FINITE_SCALAR_PARAMETERS = {
+    "strength",
+    "base_rate",
+    "block_len",
+    "block_density",
+    "decay_rate",
+    "decay_center",
+    "persist",
+    "bad_loss",
+    "good_loss",
+}
+
+
+def _validate_finite_value(name: str, value: object) -> None:
+    """Raise a clear error when a numerical configuration is non-finite."""
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"{name} must be a finite numeric value") from exc
+    if not np.isfinite(numeric_value):
+        raise ValueError(f"{name} must be finite, got {value!r}")
+
+
+def _validate_configuration(
+    mechanism: str,
+    pattern: str,
+    kwargs: dict[str, object],
+) -> None:
+    """Validate selected mechanism and pattern arguments before simulation."""
+    canonical_pattern = _PATTERN_CANONICAL_NAMES[pattern]
+    allowed = (
+        _MECHANISM_PARAMETERS[mechanism]
+        | _PATTERN_PARAMETERS[canonical_pattern]
+        | {"block"}
+    )
+    unknown = sorted(set(kwargs) - allowed)
+    if unknown:
+        names = ", ".join(unknown)
+        raise TypeError(
+            f"Unknown configuration argument(s) for mechanism={mechanism!r}, "
+            f"pattern={canonical_pattern!r}: {names}"
+        )
+
+    for name in _FINITE_SCALAR_PARAMETERS & set(kwargs):
+        _validate_finite_value(name, kwargs[name])
+
+    if kwargs.get("driver_weights") is not None:
+        try:
+            weights = np.asarray(kwargs["driver_weights"], dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("driver_weights must contain finite numeric values") from exc
+        if not np.isfinite(weights).all():
+            raise ValueError("driver_weights must contain only finite values")
+
+    block_frac = kwargs.get("block_frac")
+    if block_frac is not None:
+        try:
+            fractions = np.asarray(block_frac, dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("block_frac must contain finite numeric values") from exc
+        if not np.isfinite(fractions).all():
+            raise ValueError("block_frac must contain only finite values")
+
 
 def simulate_missingness(
     X: np.ndarray,
@@ -25,7 +129,9 @@ def simulate_missingness(
     Parameters
     ----------
     X : np.ndarray
-        Input data of shape (T, D) or (N, T, D)
+        Real-valued numeric input of shape (T, D) or (N, T, D). Integer input
+        is promoted to floating point so the returned array can represent NaN.
+        Boolean, complex, object, and string arrays are rejected.
     mechanism : str
         Missingness mechanism. Supported values are "mcar" (Missing Completely
         At Random), "mar" (Missing At Random, dependent on other variables),
@@ -90,9 +196,22 @@ def simulate_missingness(
         raise TypeError("X must be a numpy array")
     if X.ndim not in [2, 3]:
         raise ValueError("X must be 2D (T, D) or 3D (N, T, D)")
-    
+    if np.issubdtype(X.dtype, np.bool_) or not (
+        np.issubdtype(X.dtype, np.integer)
+        or np.issubdtype(X.dtype, np.floating)
+    ):
+        raise TypeError(
+            "X must have a real numeric dtype; Boolean, complex, object, and "
+            "string arrays are not supported"
+        )
+
+    X_numeric = X.astype(float) if np.issubdtype(X.dtype, np.integer) else X
+    if np.isinf(X_numeric).any():
+        raise ValueError("X must not contain infinite values")
+
     # Clip missing_rate to valid range (allow out-of-range for convenience)
-    missing_rate = float(np.clip(missing_rate, 0.0, 1.0))
+    _validate_finite_value("missing_rate", missing_rate)
+    missing_rate = float(np.clip(float(missing_rate), 0.0, 1.0))
     
     # Validate mechanism
     mechanism = mechanism.lower()
@@ -115,6 +234,8 @@ def simulate_missingness(
             f"Must be one of: {list(PATTERNS.keys())}"
         )
 
+    _validate_configuration(mechanism, pattern, kwargs)
+
     if (
         pattern in {"gilbert_elliott", "gilbert-elliott", "gilbert", "burst"}
         and mechanism != "mcar"
@@ -126,10 +247,10 @@ def simulate_missingness(
         )
     
     # Copy input
-    X_missing = X.copy()
+    X_missing = X_numeric.copy()
     
     # Identify existing NaNs
-    existing_nans = np.isnan(X)
+    existing_nans = np.isnan(X_numeric)
     mechanism_kwargs = dict(kwargs)
     target = mechanism_kwargs.get("target", "all")
     if mechanism == "mar":
@@ -139,22 +260,22 @@ def simulate_missingness(
         target = _resolve_mar_target(
             mechanism_kwargs.get("target"),
             driver_dims,
-            X.shape[-1],
+            X_numeric.shape[-1],
             allow_self_masking=mechanism_kwargs.get("allow_self_masking", False),
         )
         mechanism_kwargs["target"] = target
 
-    eligible_mask = _get_eligible_mask(X, existing_nans, target=target)
+    eligible_mask = _get_eligible_mask(X_numeric, existing_nans, target=target)
     
     # Step 1: Generate mechanism-specific mask (WHY missing)
     mask = MECHANISMS[mechanism](
-        X, missing_rate, existing_nans, rng=rng, **mechanism_kwargs
+        X_numeric, missing_rate, existing_nans, rng=rng, **mechanism_kwargs
     )
     
     # Step 2: Apply pattern (HOW missing)
     mask = PATTERNS[pattern](
         mask,
-        X.shape,
+        X_numeric.shape,
         rng=rng,
         eligible_mask=eligible_mask,
         forced_missing=existing_nans,

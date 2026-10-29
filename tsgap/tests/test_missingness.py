@@ -579,6 +579,74 @@ class TestAdditionalValidation:
         assert (~mask).sum() == mask.size  # All missing
         assert np.isnan(X_missing).all()
 
+    @pytest.mark.parametrize("missing_rate", [np.nan, np.inf, -np.inf])
+    def test_nonfinite_missing_rate_rejected(self, missing_rate):
+        X = np.random.default_rng(42).standard_normal((100, 4))
+
+        with pytest.raises(ValueError, match="missing_rate must be finite"):
+            simulate_missingness(X, "mcar", missing_rate)
+
+    @pytest.mark.parametrize(
+        "mechanism,pattern,kwargs",
+        [
+            ("mar", "pointwise", {"strength": np.nan}),
+            ("mar", "pointwise", {"base_rate": np.inf}),
+            ("mar", "pointwise", {"driver_weights": [1.0, np.nan], "driver_dims": [0, 1]}),
+            ("mnar", "pointwise", {"strength": np.inf}),
+            ("mcar", "block", {"block_density": np.nan}),
+            ("mcar", "block", {"block_frac": (0.1, np.inf)}),
+            ("mcar", "decay", {"decay_rate": np.nan}),
+            ("mcar", "decay", {"decay_center": np.inf}),
+            ("mcar", "markov", {"persist": np.nan}),
+            ("mcar", "gilbert_elliott", {"bad_loss": np.inf}),
+            ("mcar", "gilbert_elliott", {"good_loss": np.nan}),
+        ],
+    )
+    def test_nonfinite_configuration_rejected(self, mechanism, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((100, 4))
+
+        with pytest.raises(ValueError, match="finite"):
+            simulate_missingness(
+                X, mechanism, 0.2, pattern=pattern, seed=42, **kwargs
+            )
+
+    def test_unknown_configuration_argument_rejected(self):
+        X = np.random.default_rng(42).standard_normal((100, 4))
+
+        with pytest.raises(TypeError, match="Unknown configuration.*strenth"):
+            simulate_missingness(X, "mar", 0.2, driver_dims=[0], strenth=2.0)
+
+        with pytest.raises(TypeError, match="Unknown configuration.*persist"):
+            simulate_missingness(X, "mcar", 0.2, persist=0.8)
+
+    def test_integer_input_is_promoted_to_float(self):
+        X = np.arange(400).reshape(100, 4)
+
+        X_missing, mask = simulate_missingness(X, "mcar", 0.2, seed=42)
+
+        assert np.issubdtype(X_missing.dtype, np.floating)
+        assert np.isnan(X_missing[~mask]).all()
+        np.testing.assert_array_equal(X_missing[mask], X[mask])
+
+    @pytest.mark.parametrize(
+        "X",
+        [
+            np.ones((10, 2), dtype=bool),
+            np.ones((10, 2), dtype=complex),
+            np.full((10, 2), "value", dtype=object),
+        ],
+    )
+    def test_unsupported_input_dtype_rejected(self, X):
+        with pytest.raises(TypeError, match="real numeric dtype"):
+            simulate_missingness(X, "mcar", 0.2)
+
+    def test_infinite_input_value_rejected(self):
+        X = np.ones((10, 2), dtype=float)
+        X[0, 0] = np.inf
+
+        with pytest.raises(ValueError, match="must not contain infinite"):
+            simulate_missingness(X, "mcar", 0.2)
+
 
 class TestFinalValidation:
     """Test final validation enhancements."""
@@ -880,6 +948,62 @@ class TestPatternInvariants:
         observed_original = X[mask]
         observed_missing = X_missing[mask]
         np.testing.assert_array_equal(observed_missing, observed_original)
+
+    @pytest.mark.parametrize("shape", [(300, 4), (3, 120, 4)])
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 7}),
+            ("monotone", {}),
+            ("decay", {}),
+        ],
+    )
+    def test_exact_patterns_preserve_rate_over_eligible_targets(
+        self, shape, pattern, kwargs
+    ):
+        X = np.random.default_rng(42).standard_normal(shape)
+        if X.ndim == 2:
+            X[10:30, 1] = np.nan
+        else:
+            X[:, 10:20, 1] = np.nan
+
+        target = [1, 2]
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.2, seed=42, pattern=pattern, target=target, **kwargs
+        )
+
+        eligible = ~np.isnan(X)
+        target_selector = np.zeros_like(eligible, dtype=bool)
+        target_selector[..., target] = True
+        eligible &= target_selector
+        artificial_missing = (~mask) & eligible
+
+        assert artificial_missing.sum() == round(0.2 * eligible.sum())
+        assert np.isnan(X_missing[~mask]).all()
+        np.testing.assert_array_equal(X_missing[mask], X[mask])
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("markov", {"persist": 0.8}),
+            (
+                "gilbert_elliott",
+                {"persist": 0.8, "bad_loss": 1.0, "good_loss": 0.0},
+            ),
+        ],
+    )
+    def test_stochastic_patterns_rate_over_eligible_targets(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((10000, 3))
+        X[:100, 1] = np.nan
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.2, seed=42, pattern=pattern, target=[1, 2], **kwargs
+        )
+
+        eligible = ~np.isnan(X[:, 1:])
+        artificial_rate = ((~mask[:, 1:]) & eligible).sum() / eligible.sum()
+        assert abs(artificial_rate - 0.2) < 0.03
 
 
 class TestExtremeRates:

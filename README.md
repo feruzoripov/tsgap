@@ -1,6 +1,7 @@
 # TSGap
 
 [![Tests](https://github.com/feruzoripov/tsgap/actions/workflows/python-package.yml/badge.svg)](https://github.com/feruzoripov/tsgap/actions/workflows/python-package.yml)
+[![Coverage](https://codecov.io/gh/feruzoripov/tsgap/branch/main/graph/badge.svg)](https://codecov.io/gh/feruzoripov/tsgap)
 [![Docs](https://github.com/feruzoripov/tsgap/actions/workflows/docs.yml/badge.svg)](https://feruzoripov.github.io/tsgap/)
 [![PyPI](https://img.shields.io/pypi/v/tsgap)](https://pypi.org/project/tsgap/)
 [![Python versions](https://img.shields.io/pypi/pyversions/tsgap)](https://pypi.org/project/tsgap/)
@@ -16,13 +17,19 @@ controlled missing-data scenarios for evaluating imputation methods.
 `gilbert_elliott` is MCAR-only because it models an independent burst-loss
 channel rather than value- or driver-dependent missingness.
 
-## Who Is This For?
+## Statement of Need
 
-TSGap is designed for researchers and practitioners who evaluate time-series
-imputation methods. It is especially useful in healthcare monitoring, wearable
-sensing, environmental sensing, longitudinal studies, and machine-learning
-workflows where complete data are intentionally masked to benchmark
-reconstruction quality under controlled missing-data assumptions.
+Time-series imputation studies need reproducible missing-data conditions, but
+lightweight tools do not always separate the statistical reason values are
+missing from their temporal arrangement or expose how requested rates are
+measured. TSGap provides a NumPy-native interface for constructing controlled,
+seeded masks while preserving target dimensions and pre-existing gaps.
+
+The package is designed for researchers and practitioners evaluating
+time-series imputation methods. It is especially useful in healthcare
+monitoring, wearable sensing, environmental sensing, longitudinal studies, and
+machine-learning workflows where observed data are intentionally masked to
+benchmark reconstruction quality under explicit missing-data assumptions.
 
 ## How TSGap Differs From Similar Tools
 
@@ -61,7 +68,7 @@ cd tsgap
 pip install -e ".[dev]"
 ```
 
-Requires Python 3.9 or newer and NumPy 1.19 or newer.
+Requires Python 3.11 or newer and NumPy 1.19 or newer.
 
 ## Quick Start
 
@@ -112,7 +119,9 @@ X_miss, mask = simulate_missingness(
     bad_loss=0.8, good_loss=0.02
 )
 
-print(f"Actual missing rate: {(~mask).mean():.4f}")
+eligible = ~np.isnan(X)
+artificial_rate = ((~mask) & eligible).sum() / eligible.sum()
+print(f"Artificial missing rate: {artificial_rate:.4f}")
 ```
 
 The returned `mask` uses:
@@ -121,6 +130,32 @@ The returned `mask` uses:
 mask == True  -> observed
 mask == False -> missing
 ```
+
+## Scientific Interpretation and Rate Semantics
+
+`missing_rate` is measured over eligible entries: originally observed values
+in the requested target dimensions. Pre-existing NaNs and non-target dimensions
+are excluded from its denominator. The achieved artificial rate is:
+
+```python
+eligible = ~np.isnan(X)  # additionally restrict this mask for target dimensions
+achieved_rate = ((~mask) & eligible).sum() / eligible.sum()
+```
+
+Pointwise MAR and MNAR directly assign value- or driver-dependent
+probabilities to individual entries. With `block`, `monotone`, `decay`, or
+`markov`, the mechanism supplies a missingness budget or influence signal that
+the temporal pattern rearranges. These outputs should be described as
+temporally structured, mechanism-informed masks, not automatically as strict
+final-mask MAR or MNAR processes.
+
+Rate guarantees depend on the mechanism and pattern. MCAR pointwise differs
+from the requested rate by at most `0.5 / number_of_eligible_entries` because
+its count is rounded. Block, monotone, and decay preserve the mechanism count
+when feasible. MAR, MNAR, Markov, and Gilbert-Elliott are stochastic and target
+the rate in expectation, so no deterministic per-run tolerance is guaranteed;
+report the achieved rate and use multiple seeds when comparing methods.
+Infeasible Markov and Gilbert-Elliott configurations raise `ValueError`.
 
 ## Documentation
 
@@ -188,7 +223,7 @@ python examples/benchmark_imputation.py
 pytest tsgap/tests/ -v
 ```
 
-GitHub Actions runs the test suite on Python 3.9 through 3.13 and builds the
+GitHub Actions runs the test suite on Python 3.11 through 3.14 and builds the
 Sphinx documentation on every pull request to `main`.
 
 ## Contributing
@@ -204,7 +239,7 @@ for development setup, testing, and pull request guidelines.
   author = {Oripov, Feruz and Korchagina, Kseniia and Bonsu, Enock Adu and Bilgin, Ali and Aras, Shravan},
   title = {TSGap: A Python Library for Composable Time-Series Missingness Simulation},
   year = {2026},
-  version = {0.7.0},
+  version = {0.8.0},
   doi = {10.5281/zenodo.21365453},
   url = {https://github.com/feruzoripov/tsgap}
 }

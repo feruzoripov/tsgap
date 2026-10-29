@@ -37,11 +37,15 @@ Core parameters:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `X` | `np.ndarray` | Input data, shape `(T, D)` or `(N, T, D)` |
+| `X` | `np.ndarray` | Real numeric data, shape `(T, D)` or `(N, T, D)`. Integer input is promoted to float; Boolean, complex, object, and string arrays are rejected. |
 | `mechanism` | `str` | `"mcar"`, `"mar"`, or `"mnar"` |
 | `missing_rate` | `float` | Target fraction missing, clipped to `[0, 1]` |
 | `seed` | `int \| None` | Random seed |
 | `pattern` | `str` | Missingness pattern |
+
+Unknown mechanism- or pattern-specific keyword arguments raise `TypeError`, so
+misspelled configuration names cannot be silently ignored. Numerical
+configuration values must be finite, and infinite input values are rejected.
 
 Mechanism parameters:
 
