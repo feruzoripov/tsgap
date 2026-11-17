@@ -10,287 +10,191 @@ tags:
 authors:
   - name: Feruz Oripov
     orcid: 0009-0001-4303-0512
-    affiliation: "1, 3"
+    corresponding: true
+    affiliation: "1, 2"
   - name: Kseniia Korchagina
     affiliation: 1
-  - name: Enock Adu Bonsu
-    affiliation: 2
   - name: Ali Bilgin
     orcid: 0000-0003-4196-4036
-    affiliation: "3, 4, 5"
+    affiliation: "2, 3, 4"
   - name: Shravan Aras
     affiliation: 1
 affiliations:
-  - name: Center for Biomedical Informatics and Biostatistics, University of Arizona, USA
+  - name: Center for Biomedical Informatics and Biostatistics, University of Arizona, United States
     index: 1
     ror: 03m2x1q45
-  - name: Department of Epidemiology and Biostatistics, University of Arizona, USA
+  - name: School of Electrical, Computing and Software Engineering, University of Arizona, United States
     index: 2
     ror: 03m2x1q45
-  - name: Department of Electrical and Computer Engineering, University of Arizona, USA
+  - name: Department of Biomedical Engineering, University of Arizona, United States
     index: 3
     ror: 03m2x1q45
-  - name: Department of Biomedical Engineering, University of Arizona, USA
+  - name: Radiology and Imaging Sciences, University of Arizona, United States
     index: 4
     ror: 03m2x1q45
-  - name: Radiology and Imaging Sciences, University of Arizona, USA
-    index: 5
-    ror: 03m2x1q45
-date: 25 August 2026
+date: 17 November 2026
 bibliography: paper.bib
 ---
 
 # Summary
 
-Missing data is pervasive in time-series applications, particularly in healthcare
-monitoring, wearable sensors, and environmental sensing
-[@kazijevs2023deep; @bent2020investigating; @austin2021missing], where data
-loss arises from device failures, connectivity drops, patient dropout, and sensor
-degradation. Evaluating imputation algorithms requires generating controlled
-missingness in complete datasets, yet most benchmarking studies rely on
-simplistic random masking that fails to capture the structured, temporally
-correlated missingness observed in practice [@kazijevs2023deep].
+A common way to evaluate a method that estimates missing measurements is to
+hide observed values and compare the estimates with those held-out
+measurements [@schouten2018amputation]. In time-series health data, the
+resulting assessment can depend on the proportion and type of missingness, as
+well as the dataset [@kazijevs2023deep].
 
-`tsgap` is a Python library that provides composable, reproducible missingness
-simulation for time-series data. Its core design contribution is the explicit
-separation of *mechanisms* (why data is missing) from *patterns* (how data is
-missing) as two orthogonal, independently configurable axes. Researchers can
-therefore evaluate whether an imputation method that performs well under random
-scattered missingness also handles activity-dependent sensor dropout or gradual
-sensor degradation.
+`TSGap` is a Python package for generating missing values in numerical time
+series while retaining the original array for evaluation. Users select a rule
+for choosing values to hide and a pattern for arranging gaps over time,
+including scattered points, contiguous intervals, and dropout tails. The
+package returns an incomplete array and a Boolean observation mask, supports
+individual series and collections of series, and accepts a random seed to
+reproduce a simulation in a fixed software environment [@tsgap2026].
 
-Recent releases extend this design with scale-aware block missingness and an
-MCAR-only Gilbert-Elliott burst-loss pattern
-[@gilbert1960capacity; @elliott1963estimates], allowing users to simulate
-channel-like dropout with leaky good and bad states.
+# Statement of need
 
-# Statement of Need
+Missingness mechanisms describe how the probability of an observation being
+missing relates to observed and unobserved data: missing completely at random
+(MCAR) is independent of data values; missing at random (MAR) permits
+dependence on observed information but not additional dependence on unobserved
+values; and missing not at random (MNAR) involves such additional dependence
+[@rubin1976inference]. Generating missing values under specified assumptions is
+an established component of evaluating missing-data methods
+[@schouten2018amputation]. For time-series imputation, considering more than
+one missingness condition allows an evaluation to examine sensitivity to the
+chosen masking procedure [@kazijevs2023deep].
 
-The missing data literature distinguishes three canonical mechanisms
-[@rubin1976inference; @little2019statistical]: Missing Completely At Random
-(MCAR), Missing At Random (MAR), and Missing Not At Random (MNAR). In
-time-series data, the *temporal structure* of missingness is equally important:
-data may be missing as scattered individual points, contiguous blocks (sensor
-dropout), monotone tails (participant dropout), gradually increasing gaps (sensor
-degradation), intermittent bursts (flickering connections), or burst-loss
-episodes in which poor signal periods still contain occasional observations.
+`TSGap` addresses this experimental task for researchers working with
+numerical arrays, including longitudinal and sensor measurements, by exposing
+selection mechanisms and temporal patterns as separate configuration choices.
+Its scope is artificial masking and the associated observation mask; it does
+not estimate missingness mechanisms from collected data or perform imputation.
+The implemented patterns specify simulation assumptions rather than establish
+how a particular instrument or participant actually produces missing
+observations [@tsgap2026].
 
-Existing tools cover parts of this problem.
-The `ampute` function in the R package `mice` [@vanbuuren2011mice] provides
-multivariate amputation but lacks temporal pattern awareness. PyGrinder
-[@du2023pypots] implements Python-native MCAR, MAR, MNAR, and selected
-sequential or block missingness generators, but exposes them as separate
-functions rather than as one mechanism-pattern composition API. Its
-documentation also notes that some final missing rates, such as MCAR with
-pre-existing missing values and block missingness, are not strictly controlled.
-BenchPOTS, the benchmarking suite in the PyPOTS ecosystem [@du2023pypots],
-provides shared preprocessing pipelines for partially observed time-series
-datasets and can introduce artificial point, subsequence, or block missingness
-during preprocessing. However, BenchPOTS is dataset- and benchmark-oriented
-rather than a standalone simulator for composing missingness mechanisms with
-temporal patterns on arbitrary user arrays.
-Most published imputation benchmarks
-[@cao2018brits; @du2023saits; @fortuin2020gpvae] use ad-hoc MCAR-only masking,
-providing no control over temporal structure and no support for MAR or MNAR
-evaluation. A detailed comparison with these tools is provided in the State of
-the Field section.
+# State of the field
 
-`tsgap` provides:
+The `ampute` procedure in the R package `mice` [@vanbuuren2011mice] generates
+multivariate missingness using weighted scores and user-specified combinations
+of incomplete variables [@miceampute; @schouten2018amputation]. The Python
+package `pyampute` implements this approach through a scikit-learn-compatible
+transformer with configurable mechanisms and score-to-probability functions
+[@pyampute]. These tools provide alternatives when the experimental unit is a
+row of a data matrix and the principal configuration concerns which variables
+are jointly missing.
 
-- **Mechanism--pattern composability**: MCAR, MAR, and MNAR mechanisms can be
-  combined with pointwise, block, monotone, temporal decay, and Markov patterns
-  through a single function call.
-- **Automatic rate calibration**: Binary search offset calibration for MAR and
-  MNAR ensures that researchers can conduct controlled experiments at precise
-  target missing rates, rather than accepting the uncontrolled rates produced
-  by uncalibrated sigmoid models.
-- **Temporal pattern diversity**: Block, monotone, temporal decay, Markov chain,
-  and MCAR-only Gilbert-Elliott patterns capture real-world missingness
-  structures that are not otherwise available through one lightweight Python
-  interface.
-- **Scale-aware block gaps**: Block lengths can be specified as absolute sample
-  counts or as fractions of the time axis, including `(min_frac, max_frac)`
-  ranges for variable-length dropout episodes in long wearable-style recordings.
-- **Weighted multi-driver MAR**: A weighted linear combination of multiple
-  observed variables drives missingness probability, enabling realistic
-  multi-factor dependency modeling.
-- **Native 3D support**: Operates natively on longitudinal panel data of shape
-  $(N, T, D)$, where $N$ denotes the number of subjects, $T$ the number of
-  timesteps, and $D$ the number of features.
+PyGrinder provides Python functions for MCAR, logistic MAR, self-dependent
+MNAR, and sequential or block missingness [@pygrinder]. BenchPOTS provides
+dataset preprocessing pipelines with point, subsequence, and block masking
+options as part of time-series benchmarking workflows [@benchpots].
 
-# State of the Field
+`TSGap` instead takes user-supplied NumPy arrays and selects entries before
+applying a pattern, using explicit target-feature eligibility. The separate
+NumPy implementation keeps mask construction independent of dataset loading
+and learning frameworks, while treating sample, time, and feature axes
+explicitly. This scope differs from the dataset pipelines in BenchPOTS and the
+row-amputation interface in `pyampute` [@benchpots; @pyampute]. For patterns
+that relocate selected entries, the design trades preservation of the initial
+entry-level selection model for control over the temporal arrangement of gaps;
+a mechanism label therefore does not by itself characterize the final mask
+[@tsgap2026].
 
-Existing approaches to missingness simulation include dedicated R packages,
-Python libraries, and manual scripting. Each covers part of the problem, as
-summarized in \autoref{comparison}.
+# Software design
 
-The `ampute` function in `mice` [@vanbuuren2011mice] is the most
-established dedicated tool. It generates multivariate missingness using
-weighted sum scores and supports all three Rubin mechanisms
-[@rubin1976inference] (MCAR, MAR, MNAR). However, it operates on tabular data
-without temporal awareness: it cannot produce contiguous blocks, monotone
-dropout, or other time-dependent structures. It is also unavailable in Python,
-which limits its use in predominantly Python-based deep learning imputation
-pipelines.
+Version 0.8.0 accepts real numerical arrays with shape $(T,D)$ or $(N,T,D)$,
+where $T$ is the number of time steps, $D$ the number of features, and $N$ the
+number of samples; NumPy [@harris2020numpy] is its only required runtime
+dependency. Separate modules implement selection mechanisms, temporal
+patterns, and their composition, allowing pattern construction to use a shared
+definition of eligible entries. An entry is eligible when it was originally
+observed and belongs to a selected target feature; existing `NaN` values remain
+missing and are excluded from the artificial missing-rate denominator. Let $r$
+denote the requested fraction of eligible entries to hide. For a nonempty
+eligible set $E$, the achieved artificial missing rate is
 
-PyGrinder [@du2023pypots] provides Python-native MCAR, MAR, MNAR, sequential,
-and block-missing generators as part of the PyPOTS ecosystem. However, these are
-separate generator functions with different parameterizations and rate-control
-semantics. `tsgap` instead exposes mechanism and pattern as orthogonal arguments
-to one API for its general temporal patterns, so MCAR, MAR, or MNAR mechanisms
-can be evaluated under scattered, block, monotone, decay, or Markov missingness
-while preserving target-feature constraints and pre-existing missing values.
+$$
+\widehat r =
+\frac{\#\{i\in E:\mathrm{mask}_i=\mathrm{False}\}}{|E|}.
+$$
 
-BenchPOTS [@du2023pypots] works at a different layer of the workflow. It
-standardizes dataset loading, train/validation/test preparation, and task
-conversion for partially observed time-series benchmarks. Its missingness
-interface supports point, subsequence, and block patterns during preprocessing,
-delegating the actual masking operations to PyGrinder. This is useful when
-working inside the PyPOTS benchmarking ecosystem, while `tsgap` is intended for
-controlled missingness simulation on arbitrary NumPy arrays, including
-mechanism-pattern combinations, target-dimension constraints, preservation of
-pre-existing missing values, and scale-aware block lengths.
+The returned mask marks both original and artificial missing values as false,
+so imputation errors should be calculated only at newly hidden, originally
+observed entries [@tsgap2026].
 
-The most common practice in imputation benchmarks remains ad-hoc masking with
-`numpy.random` [@cao2018brits; @du2023saits; @fortuin2020gpvae], which typically
-supports only MCAR with no temporal structure, no rate calibration, and no
-reproducibility guarantees beyond manual seed management.
+The MCAR selector samples a fixed number of eligible entries uniformly without
+replacement. MAR combines available values from specified driver features and
+transforms a standardized score into logistic missingness probabilities. MNAR
+similarly uses standardized feature values, their negatives, or their absolute
+values so that high, low, or extreme observations can receive higher
+missingness probabilities. A bounded search calibrates the logistic offset to
+the requested mean probability over eligible entries. The subsequent Bernoulli
+sampling means that the realized MAR or MNAR count can vary between runs even
+when the expected rate is calibrated [@tsgap2026].
 
-: Comparison of missingness simulation tools. \label{comparison}
+The pointwise pattern retains the selector's mask. Block placement instead uses
+fixed lengths or fractions of the time axis, including ranges from which block
+lengths are sampled. Monotone dropout masks the final eligible observations of
+selected sample-feature series, so pre-existing gaps do not consume the
+artificial dropout budget. Temporal decay preserves the selected count while
+sampling without replacement from increasing sigmoid time weights
+[@tsgap2026].
 
-| Feature | TSGap | PyGrinder | BenchPOTS | mice | Ad-hoc |
-|---------|:-:|:-:|:-:|:-:|:-:|
-| MCAR / MAR / MNAR generators | $\checkmark$ | $\checkmark$ | Via PyGrinder | $\checkmark$ | MCAR only |
-| Mechanism--pattern separation | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
-| Point / subsequence / block patterns | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\times$ | Rare |
-| Scale-aware block fractions | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
-| Monotone pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
-| Temporal decay pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
-| Markov chain pattern | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
-| Gilbert-Elliott burst-loss pattern | MCAR only | $\times$ | $\times$ | $\times$ | $\times$ |
-| Unified mechanism--pattern API | $\checkmark$ | $\times$ | $\times$ | $\times$ | $\times$ |
-| Target-rate control over eligible entries | $\checkmark$ | Partial | Partial | Partial | $\times$ |
-| Weighted multi-driver MAR | $\checkmark$ | $\times$ | $\times$ | $\checkmark$ | $\times$ |
-| Arbitrary 2D/3D user arrays | $\checkmark$ | Varies | Dataset pipelines | $\times$ | Varies |
-| Python | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\times$ (R) | $\checkmark$ |
-| Reproducible explicit RNG | $\checkmark$ | Varies | Varies | $\checkmark$ | Varies |
+The Markov pattern generates observed and missing states, while the
+Gilbert--Elliott pattern uses hidden good and bad states with separate loss
+probabilities [@gilbert1960capacity; @elliott1963estimates]. Both target the
+selector's realized eligible-entry rate in expectation rather than preserving
+an exact realized count, and infeasible partial-rate configurations are
+rejected. Gilbert--Elliott is restricted to MCAR; the other five patterns
+accept all three selectors. Temporal rearrangement can discard dependence on
+individual driver or target values, so these combinations are structured masks
+informed by the initial selection rather than a guarantee that the final
+process satisfies MAR or MNAR [@tsgap2026].
 
-# Software Design
+The package requires Python 3.11 or newer, promotes integer input to floating
+point, and rejects unsupported array types, infinite values, non-finite
+numerical configuration, and unrecognized arguments. Randomness is passed
+through a local NumPy generator, avoiding changes to global random state. The
+test suite covers reproducibility, target-feature preservation, pre-existing
+gaps, missing-rate behavior, invalid configurations, and both two- and
+three-dimensional inputs. Continuous integration tests Python 3.11--3.14,
+runs Ruff, reports coverage, and builds the Sphinx documentation
+[@tsgap2026].
 
-The central design decision in `tsgap` is the strict separation of mechanisms
-and patterns into independent, composable modules. This separation reflects a
-conceptual distinction that is well-established in the missing data literature
-but not enforced in existing software: *why* data is missing (the probabilistic
-relationship between values and missingness) is orthogonal to *how* it is missing
-(the temporal structure of the gaps). By making these two axes independently
-configurable, `tsgap` supports evaluation across mechanism-pattern combinations
-through a single function call while making restricted cases explicit, such as
-the MCAR-only Gilbert-Elliott pattern.
+# Research impact statement
 
-The library's architecture consists of three modules:
+`TSGap` was developed for research evaluating how statistical, machine
+learning, and deep learning imputation methods respond to different
+missingness structures in wearable-derived time series. The repository
+supplies a reproducible synthetic benchmark comparing mean imputation, forward
+filling, and linear interpolation under six selected mechanism-pattern
+conditions, together with scripts for visualizing generated masks. These
+materials demonstrate an end-to-end evaluation workflow rather than claim
+comparative performance on a population or application dataset.
 
-**Mechanisms** (`mechanisms.py`) implement the probabilistic models. MCAR uses
-uniform sampling without replacement for exact rate control. MAR and MNAR use
-logistic probability models of the form $P(M_{ij} = 1) = \sigma(\alpha \cdot s_{ij} + \beta)$,
-where $M_{ij}$ is the missingness indicator at timestep $i$ and feature $j$,
-$\sigma$ is the sigmoid function, $\alpha$ is a user-specified strength parameter,
-$s_{ij}$ is a normalized score (derived from a driver signal for MAR or from the
-value itself for MNAR), and $\beta$ is an offset automatically calibrated via
-binary search to match the target missing rate. MAR supports weighted multi-driver
-signals computed as
-$z_i = \sum_k w_k \cdot (X_{i,k} - \mu_k) / \sigma_k$, where $w_k$ are
-user-specified weights, $X_{i,k}$ is the value of driver dimension $k$ at
-timestep $i$, and $\mu_k$ and $\sigma_k$ are its mean and standard deviation.
+The package's explicit mechanism-pattern separation supports sensitivity
+analyses that would otherwise require researchers to maintain several
+experiment-specific masking implementations. Installation instructions,
+mathematical descriptions, 184 automated tests, an MIT license, and
+contribution guidelines support inspection and reuse of the workflow. Version
+0.8.0 is archived on Zenodo with a version-specific DOI [@tsgap2026] and has
+completed pyOpenSci software peer review.
 
-**Patterns** (`patterns.py`) reshape the temporal structure of the
-mechanism-generated mask. Six patterns are implemented: *pointwise* (scattered
-individual points), *block* (contiguous missing segments), *monotone* (once
-missing, stays missing), *temporal decay* (missingness increases over time via a
-sigmoid ramp), *Markov chain* (a 2-state chain per series with transition
-probabilities calibrated from the stationary distribution), and
-*Gilbert-Elliott* burst loss [@gilbert1960capacity; @elliott1963estimates].
-The first five patterns can be combined with MCAR, MAR, or MNAR mechanisms.
-Gilbert-Elliott is intentionally restricted to MCAR because it models an
-independent channel-loss process with hidden good and bad states rather than a
-driver- or value-dependent mechanism.
+# AI usage disclosure
 
-For the general patterns, the mechanism first generates a binary mask and the
-pattern then reshapes its temporal arrangement while preserving pre-existing
-missing values, target-feature eligibility, and consistency between the returned
-data and mask. For temporal patterns, MAR/MNAR combinations should therefore be
-interpreted as mechanism-informed missingness budgets reshaped in time, rather
-than as pure pointwise MAR/MNAR propensities after reshaping. The documentation
-separates these cases by distinguishing exact missing-count control, calibrated
-pointwise probabilities, and expected-rate burst processes.
-For the block pattern, users may request fixed sample lengths with `block_len`
-or relative lengths with `block_frac`; passing a range such as
-`block_frac=(0.02, 0.10)` samples a new block length uniformly within that range
-for each block, which is more appropriate for long recordings where a fixed
-10-sample default would behave like scattered point missingness at the scale of
-the full series.
-
-**Core API** (`core.py`) composes mechanisms and patterns through a single entry
-point:
-
-```python
-X_miss, mask = simulate_missingness(
-    X,                          # (T, D) or (N, T, D) array
-    mechanism="mar",            # WHY: depends on driver
-    missing_rate=0.25,          # calibrated to target
-    pattern="block",            # HOW: contiguous dropout
-    driver_dims=[0, 1],         # multi-driver
-    driver_weights=[0.8, 0.2],  # weighted combination
-    block_frac=(0.02, 0.10),    # variable-length blocks
-    seed=42                     # reproducible
-)
-```
-
-The library depends only on NumPy, avoiding heavy dependencies on deep learning
-frameworks. This keeps installation lightweight and ensures compatibility with
-any downstream imputation pipeline. All randomness flows through NumPy's
-`Generator` API with explicit seed propagation, ensuring full reproducibility
-without reliance on global RNG state.
-
-# Research Impact Statement
-
-`tsgap` was developed at the University of Arizona to investigate the
-sensitivity of time-series imputation algorithms to different missingness
-structures. By providing reproducible missingness generation across supported
-mechanism-pattern conditions, `tsgap` lets researchers benchmark statistical,
-machine learning, and deep learning imputation methods under controlled
-conditions. This addresses a gap in the imputation literature, where
-evaluations are often limited to MCAR-only masking at low missing rates
-[@kazijevs2023deep; @cao2018brits]. The library is pip-installable
-(`pip install tsgap`), includes focused documentation with mathematical
-descriptions of all mechanisms and patterns, and provides a runnable imputation
-benchmark comparing simple baselines across representative missingness
-scenarios. The current release (0.7.0) is archived with a Zenodo DOI
-[@tsgapzenodo].
-The current test suite includes 140 automated tests covering
-mechanism-pattern combinations, edge cases,
-extreme rate calibration accuracy (1%--90%), numerical stability,
-reproducibility, eligibility guarantees, and behavioral checks such as MAR
-direction, MNAR tail targeting, block run lengths, scale-aware block fractions,
-variable-length blocks, decay timing, Markov burst persistence,
-Gilbert-Elliott rate feasibility, MCAR-only enforcement, leaky burst behavior,
-aliases, 3D support, NaN preservation, and target-dimension handling.
-Continuous integration runs on Python 3.9--3.13 with Ruff linting and coverage reporting.
-The package is released under the MIT license and hosted on GitHub with an open
-issue tracker for community use and contribution.
-
-# AI Usage Disclosure
-
-Generative AI tools, including Anthropic Claude and OpenAI Codex/ChatGPT, were
-used to assist with code review, test generation, documentation organization,
-and manuscript drafting during the development of `tsgap`. All AI-assisted code
-and text were reviewed, tested, and validated by the authors to ensure
-correctness and adherence to the library's design principles. The authors
-assume full responsibility for the final implementation and manuscript.
+As disclosed in the package README, generative AI tools, including OpenAI
+Codex/ChatGPT and Anthropic Claude, assisted with code review, test generation,
+documentation organization, and manuscript drafting during development.
+OpenAI Codex also assisted with this manuscript revision, including comparison
+with version 0.8.0, conversion to the JOSS format, and reference checking.
+AI-assisted code and text were reviewed, tested, and validated by the package
+authors, who retain full responsibility for the project and manuscript.
 
 # Acknowledgements
 
-This work was supported by the Center for Biomedical Informatics and
-Biostatistics at the University of Arizona, which provided computational
-resources and infrastructure support.
+The authors acknowledge computational resources and infrastructure support
+provided by the Center for Biomedical Informatics and Biostatistics at the
+University of Arizona.
 
 # References
