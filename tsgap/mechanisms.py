@@ -52,6 +52,49 @@ def _get_eligible_mask(
     return eligible
 
 
+def _resolve_mar_target(
+    target: str | list[int] | None,
+    driver_dims: list[int],
+    n_dims: int,
+    allow_self_masking: bool = False
+) -> list[int]:
+    """Resolve MAR target dimensions and prevent accidental self-masking."""
+    if target is None:
+        target_dims = [d for d in range(n_dims) if d not in set(driver_dims)]
+        if not target_dims:
+            raise ValueError(
+                "MAR requires at least one non-driver target dimension when "
+                "target is omitted. For one-feature data, provide another "
+                "observed driver variable or explicitly set target='all' with "
+                "allow_self_masking=True to request self-dependent hybrid "
+                "MAR/MNAR behavior."
+            )
+        return target_dims
+
+    if isinstance(target, str) and target == "all":
+        target_dims = list(range(n_dims))
+    else:
+        target_dims = list(target)
+
+    if any(d < 0 or d >= n_dims for d in target_dims):
+        raise ValueError(
+            f"target dimensions out of range. "
+            f"Got {target_dims}, but data has {n_dims} dimensions (0-{n_dims-1})"
+        )
+
+    overlap = sorted(set(driver_dims) & set(target_dims))
+    if overlap and not allow_self_masking:
+        raise ValueError(
+            "MAR target dimensions must not overlap driver_dims because "
+            "self-dependent masking is MNAR/hybrid for the overlapping "
+            f"dimensions. Overlap: {overlap}. Set target to non-driver "
+            "dimensions, or set allow_self_masking=True to request this "
+            "behavior explicitly."
+        )
+
+    return target_dims
+
+
 def _calibrate_offset(
     compute_rate_fn,
     target_rate: float,
@@ -122,6 +165,71 @@ def _calibrate_offset(
     
     # Clamp final offset for numerical stability
     return np.clip((offset_low + offset_high) / 2, -50, 50)
+
+
+def _compute_mar_driver(
+    X: np.ndarray,
+    driver_dims: list[int],
+    driver_weights: list[float] | None,
+) -> np.ndarray:
+    """Compute a MAR driver signal while ignoring NaNs in driver dimensions."""
+    if X.ndim == 2:
+        driver_values = X[:, driver_dims]
+        axis = 1
+        keepdims = True
+        weight_shape = (1, -1)
+    else:
+        driver_values = X[:, :, driver_dims]
+        axis = 2
+        keepdims = True
+        weight_shape = (1, 1, -1)
+
+    observed = ~np.isnan(driver_values)
+    if not observed.any():
+        raise ValueError(
+            "MAR driver dimensions contain only NaN values; at least one "
+            "observed driver value is required."
+        )
+
+    if driver_weights is None:
+        driver_sum = np.nansum(driver_values, axis=axis, keepdims=keepdims)
+        observed_count = observed.sum(axis=axis, keepdims=keepdims)
+        return np.divide(
+            driver_sum,
+            observed_count,
+            out=np.full_like(driver_sum, np.nan, dtype=float),
+            where=observed_count > 0,
+        )
+
+    weights = np.array(driver_weights, dtype=float).reshape(weight_shape)
+    weighted_values = np.where(observed, driver_values * weights, 0.0)
+    observed_weight = np.where(observed, weights, 0.0).sum(
+        axis=axis, keepdims=keepdims
+    )
+    weighted_sum = weighted_values.sum(axis=axis, keepdims=keepdims)
+    return np.divide(
+        weighted_sum,
+        observed_weight,
+        out=np.full_like(weighted_sum, np.nan, dtype=float),
+        where=observed_weight > 0,
+    )
+
+
+def _normalize_mar_driver(driver: np.ndarray, axis=None) -> np.ndarray:
+    """Normalize MAR driver values and assign neutral scores where missing."""
+    if axis is None:
+        driver_std = np.nanstd(driver)
+        if driver_std > 1e-10:
+            driver_norm = (driver - np.nanmean(driver)) / driver_std
+        else:
+            driver_norm = np.zeros_like(driver, dtype=float)
+    else:
+        driver_means = np.nanmean(driver, axis=axis, keepdims=True)
+        driver_stds = np.nanstd(driver, axis=axis, keepdims=True)
+        driver_stds = np.where(driver_stds > 1e-10, driver_stds, 1.0)
+        driver_norm = (driver - driver_means) / driver_stds
+
+    return np.nan_to_num(driver_norm, nan=0.0)
 
 
 def apply_mcar(
@@ -209,10 +317,11 @@ def apply_mar(
     existing_nans: np.ndarray,
     driver_dims: list[int] | None = None,
     driver_weights: list[float] | None = None,
-    target: str | list[int] = "all",
+    target: str | list[int] | None = None,
     strength: float = 2.0,
     base_rate: float = 0.01,
     direction: str = "positive",
+    allow_self_masking: bool = False,
     rng: np.random.Generator | None = None,
     **kwargs
 ) -> np.ndarray:
@@ -248,14 +357,20 @@ def apply_mar(
         Weights for each driver dimension. Must have same length as
         driver_dims. Weights are normalized to sum to 1.
         Default: equal weights (simple mean).
-    target : str or list[int]
-        "all" (default) or list of dimension indices to mask
+    target : str or list[int], optional
+        Dimensions to mask. By default, MAR masks all non-driver dimensions.
+        Explicit overlap with driver_dims is rejected unless
+        allow_self_masking=True.
     strength : float
         Dependency strength (higher = stronger dependency, must be >= 0)
     base_rate : float
         Minimum probability to avoid all-zeros (should be < missing_rate)
     direction : str
         "positive" (high driver -> high missing) or "negative"
+    allow_self_masking : bool
+        If True, permit target dimensions to overlap driver_dims. Overlapping
+        dimensions have self-dependent MNAR/hybrid behavior and are not strict
+        MAR for those dimensions.
     rng : np.random.Generator, optional
         Random number generator for reproducibility
     
@@ -304,6 +419,10 @@ def apply_mar(
             f"driver_dims out of range. "
             f"Got {driver_dims}, but data has {n_dims} dimensions (0-{n_dims-1})"
         )
+
+    target = _resolve_mar_target(
+        target, driver_dims, n_dims, allow_self_masking=allow_self_masking
+    )
     
     # Early return for edge cases
     if missing_rate <= 0:
@@ -332,34 +451,14 @@ def apply_mar(
         mask[existing_nans] = False
         return mask
     
-    # Compute driver signal (weighted linear combination)
+    # Compute driver signal (weighted linear combination). Missing driver
+    # values are ignored; timesteps with no observed driver value receive a
+    # neutral normalized score after calibration.
+    driver = _compute_mar_driver(X, driver_dims, driver_weights)
     if X.ndim == 2:
-        if driver_weights is None:
-            driver = X[:, driver_dims].mean(axis=1, keepdims=True)
-        else:
-            w = np.array(driver_weights)
-            driver = (X[:, driver_dims] * w[np.newaxis, :]).sum(
-                axis=1, keepdims=True
-            )
-        # Normalize globally for 2D
-        driver_std = np.nanstd(driver)
-        if driver_std > 1e-10:
-            driver_norm = (driver - np.nanmean(driver)) / driver_std
-        else:
-            driver_norm = np.zeros_like(driver)
+        driver_norm = _normalize_mar_driver(driver)
     else:  # 3D (N, T, D)
-        if driver_weights is None:
-            driver = X[:, :, driver_dims].mean(axis=2, keepdims=True)
-        else:
-            w = np.array(driver_weights)
-            driver = (X[:, :, driver_dims] * w[np.newaxis, np.newaxis, :]).sum(
-                axis=2, keepdims=True
-            )
-        # Vectorized per-participant normalization for 3D
-        driver_means = np.nanmean(driver, axis=1, keepdims=True)
-        driver_stds = np.nanstd(driver, axis=1, keepdims=True)
-        driver_stds = np.where(driver_stds > 1e-10, driver_stds, 1.0)
-        driver_norm = (driver - driver_means) / driver_stds
+        driver_norm = _normalize_mar_driver(driver, axis=1)
     
     # Compute probabilities using sigmoid
     if direction == "negative":

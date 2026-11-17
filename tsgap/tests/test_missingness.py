@@ -92,8 +92,69 @@ class TestMAR:
             X, "mar", target_rate, seed=42, driver_dims=[0]
         )
         
-        actual_rate = (~mask).sum() / mask.size
+        assert mask[:, 0].all()
+        actual_rate = (~mask[:, 1:]).mean()
         assert abs(actual_rate - target_rate) < 0.05  # Within 5%
+
+    def test_default_target_excludes_driver_dimensions(self):
+        """Default MAR targets non-driver dimensions only."""
+        X = np.random.default_rng(1).standard_normal((1000, 3))
+
+        _, mask = simulate_missingness(
+            X, "mar", 0.25, seed=2, strength=8.0, driver_dims=[0]
+        )
+
+        assert mask[:, 0].all()
+        assert (~mask[:, 1:]).mean() > 0
+
+    def test_explicit_driver_target_overlap_raises(self):
+        """Explicit MAR self-masking should require opt-in."""
+        X = np.random.default_rng(1).standard_normal((100, 2))
+
+        with pytest.raises(ValueError, match="must not overlap driver_dims"):
+            simulate_missingness(
+                X, "mar", 0.25, seed=2, driver_dims=[0], target="all"
+            )
+
+        with pytest.raises(ValueError, match="must not overlap driver_dims"):
+            simulate_missingness(
+                X, "mar", 0.25, seed=2, driver_dims=[0], target=[0]
+            )
+
+    def test_allow_self_masking_opt_in(self):
+        """Users can explicitly request hybrid MAR/MNAR self-masking."""
+        X = np.random.default_rng(1).standard_normal((1000, 2))
+
+        _, mask = simulate_missingness(
+            X,
+            "mar",
+            0.25,
+            seed=2,
+            driver_dims=[0],
+            target="all",
+            allow_self_masking=True,
+        )
+
+        assert (~mask[:, 0]).mean() > 0
+        assert (~mask[:, 1]).mean() > 0
+
+    def test_one_feature_mar_requires_explicit_self_masking(self):
+        """Single-feature MAR cannot be strict MAR without another driver."""
+        X = np.random.default_rng(1).standard_normal((100, 1))
+
+        with pytest.raises(ValueError, match="at least one non-driver target"):
+            simulate_missingness(X, "mar", 0.25, seed=2, driver_dims=[0])
+
+        _, mask = simulate_missingness(
+            X,
+            "mar",
+            0.25,
+            seed=2,
+            driver_dims=[0],
+            target="all",
+            allow_self_masking=True,
+        )
+        assert (~mask).mean() > 0
     
     def test_dependency_on_driver(self):
         """MAR missingness should depend on driver dimension."""
@@ -329,6 +390,17 @@ class TestBlockMissingness:
         assert np.median(run_lengths) >= 600
         assert np.percentile(run_lengths, 95) >= 600
 
+    def test_block_pattern_reaches_rate_on_large_arrays(self):
+        """Block placement should scale beyond the old fixed attempt cap."""
+        X = np.zeros((20000, 10))
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.30, seed=0, pattern="block", block_len=10
+        )
+
+        actual_rate = (~mask).mean()
+        assert abs(actual_rate - 0.30) < 0.01
+
 
 class TestReproducibility:
     """Test seed reproducibility."""
@@ -506,6 +578,74 @@ class TestAdditionalValidation:
         X_missing, mask = simulate_missingness(X, "mcar", 1.0, seed=42)
         assert (~mask).sum() == mask.size  # All missing
         assert np.isnan(X_missing).all()
+
+    @pytest.mark.parametrize("missing_rate", [np.nan, np.inf, -np.inf])
+    def test_nonfinite_missing_rate_rejected(self, missing_rate):
+        X = np.random.default_rng(42).standard_normal((100, 4))
+
+        with pytest.raises(ValueError, match="missing_rate must be finite"):
+            simulate_missingness(X, "mcar", missing_rate)
+
+    @pytest.mark.parametrize(
+        "mechanism,pattern,kwargs",
+        [
+            ("mar", "pointwise", {"strength": np.nan}),
+            ("mar", "pointwise", {"base_rate": np.inf}),
+            ("mar", "pointwise", {"driver_weights": [1.0, np.nan], "driver_dims": [0, 1]}),
+            ("mnar", "pointwise", {"strength": np.inf}),
+            ("mcar", "block", {"block_density": np.nan}),
+            ("mcar", "block", {"block_frac": (0.1, np.inf)}),
+            ("mcar", "decay", {"decay_rate": np.nan}),
+            ("mcar", "decay", {"decay_center": np.inf}),
+            ("mcar", "markov", {"persist": np.nan}),
+            ("mcar", "gilbert_elliott", {"bad_loss": np.inf}),
+            ("mcar", "gilbert_elliott", {"good_loss": np.nan}),
+        ],
+    )
+    def test_nonfinite_configuration_rejected(self, mechanism, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((100, 4))
+
+        with pytest.raises(ValueError, match="finite"):
+            simulate_missingness(
+                X, mechanism, 0.2, pattern=pattern, seed=42, **kwargs
+            )
+
+    def test_unknown_configuration_argument_rejected(self):
+        X = np.random.default_rng(42).standard_normal((100, 4))
+
+        with pytest.raises(TypeError, match="Unknown configuration.*strenth"):
+            simulate_missingness(X, "mar", 0.2, driver_dims=[0], strenth=2.0)
+
+        with pytest.raises(TypeError, match="Unknown configuration.*persist"):
+            simulate_missingness(X, "mcar", 0.2, persist=0.8)
+
+    def test_integer_input_is_promoted_to_float(self):
+        X = np.arange(400).reshape(100, 4)
+
+        X_missing, mask = simulate_missingness(X, "mcar", 0.2, seed=42)
+
+        assert np.issubdtype(X_missing.dtype, np.floating)
+        assert np.isnan(X_missing[~mask]).all()
+        np.testing.assert_array_equal(X_missing[mask], X[mask])
+
+    @pytest.mark.parametrize(
+        "X",
+        [
+            np.ones((10, 2), dtype=bool),
+            np.ones((10, 2), dtype=complex),
+            np.full((10, 2), "value", dtype=object),
+        ],
+    )
+    def test_unsupported_input_dtype_rejected(self, X):
+        with pytest.raises(TypeError, match="real numeric dtype"):
+            simulate_missingness(X, "mcar", 0.2)
+
+    def test_infinite_input_value_rejected(self):
+        X = np.ones((10, 2), dtype=float)
+        X[0, 0] = np.inf
+
+        with pytest.raises(ValueError, match="must not contain infinite"):
+            simulate_missingness(X, "mcar", 0.2)
 
 
 class TestFinalValidation:
@@ -809,6 +949,62 @@ class TestPatternInvariants:
         observed_missing = X_missing[mask]
         np.testing.assert_array_equal(observed_missing, observed_original)
 
+    @pytest.mark.parametrize("shape", [(300, 4), (3, 120, 4)])
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("pointwise", {}),
+            ("block", {"block_len": 7}),
+            ("monotone", {}),
+            ("decay", {}),
+        ],
+    )
+    def test_exact_patterns_preserve_rate_over_eligible_targets(
+        self, shape, pattern, kwargs
+    ):
+        X = np.random.default_rng(42).standard_normal(shape)
+        if X.ndim == 2:
+            X[10:30, 1] = np.nan
+        else:
+            X[:, 10:20, 1] = np.nan
+
+        target = [1, 2]
+        X_missing, mask = simulate_missingness(
+            X, "mcar", 0.2, seed=42, pattern=pattern, target=target, **kwargs
+        )
+
+        eligible = ~np.isnan(X)
+        target_selector = np.zeros_like(eligible, dtype=bool)
+        target_selector[..., target] = True
+        eligible &= target_selector
+        artificial_missing = (~mask) & eligible
+
+        assert artificial_missing.sum() == round(0.2 * eligible.sum())
+        assert np.isnan(X_missing[~mask]).all()
+        np.testing.assert_array_equal(X_missing[mask], X[mask])
+
+    @pytest.mark.parametrize(
+        "pattern,kwargs",
+        [
+            ("markov", {"persist": 0.8}),
+            (
+                "gilbert_elliott",
+                {"persist": 0.8, "bad_loss": 1.0, "good_loss": 0.0},
+            ),
+        ],
+    )
+    def test_stochastic_patterns_rate_over_eligible_targets(self, pattern, kwargs):
+        X = np.random.default_rng(42).standard_normal((10000, 3))
+        X[:100, 1] = np.nan
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.2, seed=42, pattern=pattern, target=[1, 2], **kwargs
+        )
+
+        eligible = ~np.isnan(X[:, 1:])
+        artificial_rate = ((~mask[:, 1:]) & eligible).sum() / eligible.sum()
+        assert abs(artificial_rate - 0.2) < 0.03
+
 
 class TestExtremeRates:
     """Test calibration accuracy at extreme missing rates."""
@@ -831,7 +1027,7 @@ class TestExtremeRates:
     def test_mar_extreme_rates(self, rate):
         X = np.random.default_rng(42).standard_normal((200, 5))
         _, mask = simulate_missingness(X, "mar", rate, seed=42, driver_dims=[0])
-        actual = (~mask).sum() / mask.size
+        actual = (~mask[:, 1:]).mean()
         assert abs(actual - rate) < 0.05
 
     @pytest.mark.parametrize("rate", [0.01, 0.05, 0.50, 0.90])
@@ -919,6 +1115,33 @@ class TestMonotonePattern:
         actual_rate = (~mask).sum() / mask.size
         # Monotone reshuffles missingness, rate may shift somewhat
         assert abs(actual_rate - 0.20) < 0.10
+
+    @pytest.mark.parametrize("gap_kind", ["trailing", "leading", "intermittent"])
+    def test_monotone_allocates_over_eligible_positions(self, gap_kind):
+        """Pre-existing gaps should not consume the monotone budget."""
+        X = np.arange(100.0).reshape(100, 1)
+        if gap_kind == "trailing":
+            X[50:, 0] = np.nan
+        elif gap_kind == "leading":
+            X[:50, 0] = np.nan
+        else:
+            X[::3, 0] = np.nan
+
+        _, mask = simulate_missingness(
+            X, "mcar", 0.8, seed=2, pattern="monotone"
+        )
+
+        eligible = ~np.isnan(X[:, 0])
+        eligible_positions = np.flatnonzero(eligible)
+        expected_missing = round(0.8 * eligible.sum())
+        artificial_missing = (~mask[:, 0]) & eligible
+
+        assert artificial_missing.sum() == expected_missing
+        assert mask[np.isnan(X)].sum() == 0
+        np.testing.assert_array_equal(
+            np.flatnonzero(artificial_missing),
+            eligible_positions[-expected_missing:],
+        )
 
     def test_monotone_with_mar(self):
         """Monotone should work with MAR mechanism."""
@@ -1046,7 +1269,7 @@ class TestMARDriverWeights:
             driver_dims=[0, 1], driver_weights=[0.8, 0.2]
         )
 
-        actual_rate = (~mask).sum() / mask.size
+        actual_rate = (~mask[:, 2:]).mean()
         assert abs(actual_rate - 0.20) < 0.05
 
     def test_driver_weights_normalized(self):
@@ -1156,8 +1379,30 @@ class TestMARDriverWeights:
         )
 
         assert mask.shape == X.shape
-        actual_rate = (~mask).sum() / mask.size
+        actual_rate = (~mask[:, :, 2:]).mean()
         assert abs(actual_rate - 0.20) < 0.05
+
+    def test_mar_ignores_nan_driver_values_for_rate_calibration(self):
+        """NaNs in MAR drivers should not collapse the achieved target rate."""
+        X = np.random.default_rng(0).standard_normal((2000, 4))
+        X[:100, 0] = np.nan
+
+        _, mask = simulate_missingness(
+            X, "mar", 0.20, seed=0, driver_dims=[0], target=[1, 2, 3]
+        )
+
+        actual_rate = (~mask[:, 1:]).mean()
+        assert abs(actual_rate - 0.20) < 0.03
+
+    def test_mar_all_nan_driver_raises_clear_error(self):
+        """MAR should fail clearly when no observed driver values exist."""
+        X = np.random.default_rng(0).standard_normal((100, 4))
+        X[:, 0] = np.nan
+
+        with pytest.raises(ValueError, match="driver dimensions contain only NaN"):
+            simulate_missingness(
+                X, "mar", 0.20, seed=0, driver_dims=[0], target=[1, 2, 3]
+            )
 
 
 class TestMarkovPattern:
@@ -1173,6 +1418,35 @@ class TestMarkovPattern:
 
         actual_rate = (~mask).sum() / mask.size
         assert abs(actual_rate - 0.20) < 0.05
+
+    def test_markov_rejects_infeasible_partial_rate(self):
+        """Markov should not silently clip an infeasible onset probability."""
+        X = np.random.default_rng(7).standard_normal((1000, 2))
+
+        with pytest.raises(ValueError, match=r"partial rates must be <= 0\.8333"):
+            simulate_missingness(
+                X,
+                "mcar",
+                0.95,
+                seed=8,
+                pattern="markov",
+                persist=0.8,
+            )
+
+    def test_markov_feasible_high_rate(self):
+        """A high rate below the feasibility ceiling remains supported."""
+        X = np.random.default_rng(7).standard_normal((20000, 2))
+
+        _, mask = simulate_missingness(
+            X,
+            "mcar",
+            0.80,
+            seed=8,
+            pattern="markov",
+            persist=0.8,
+        )
+
+        assert abs((~mask).mean() - 0.80) < 0.02
 
     def test_markov_creates_bursts(self):
         """Higher persist should create longer missing bursts."""
@@ -1570,7 +1844,7 @@ class TestGilbertElliottPattern:
             )
 
     def test_gilbert_elliott_infeasible_high_rate(self):
-        """Should raise when target rate is at or above bad_loss."""
+        """Should raise when target rate exceeds the persistence ceiling."""
         X = np.random.default_rng(42).standard_normal((1000, 5))
 
         with pytest.raises(ValueError, match="infeasible"):
@@ -1578,6 +1852,45 @@ class TestGilbertElliottPattern:
                 X, "mcar", 0.90, seed=42, pattern="gilbert",
                 bad_loss=0.8, good_loss=0.05
             )
+
+    def test_gilbert_elliott_rejects_infeasible_persistence_rate(self):
+        """Should not clip onset probability for an infeasible target rate."""
+        X = np.random.default_rng(7).standard_normal((1000, 2))
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"0\.0000 <= rate <= 0\.6667.*rate=0\.9500, "
+                r"persist=0\.5000, bad_loss=1\.0000, good_loss=0\.0000"
+            ),
+        ):
+            simulate_missingness(
+                X,
+                "mcar",
+                0.95,
+                seed=8,
+                pattern="gilbert_elliott",
+                persist=0.5,
+                bad_loss=1.0,
+                good_loss=0.0,
+            )
+
+    def test_gilbert_elliott_feasible_high_rate(self):
+        """A high rate below the persistence ceiling remains supported."""
+        X = np.random.default_rng(7).standard_normal((20000, 2))
+
+        _, mask = simulate_missingness(
+            X,
+            "mcar",
+            0.60,
+            seed=8,
+            pattern="gilbert_elliott",
+            persist=0.5,
+            bad_loss=1.0,
+            good_loss=0.0,
+        )
+
+        assert abs((~mask).mean() - 0.60) < 0.02
 
     def test_gilbert_elliott_all_missing_edge_case(self):
         """A 100% mechanism mask should remain fully missing."""

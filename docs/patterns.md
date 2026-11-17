@@ -1,9 +1,24 @@
 # Patterns
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 Patterns describe the temporal arrangement of missing values. Most patterns can
 be combined with any mechanism. `gilbert_elliott` is MCAR-only because it models
 an independent burst-loss channel rather than value- or driver-dependent
 missingness.
+
+`pointwise` preserves the mechanism's point-level probabilities directly. Other
+temporal patterns use the mechanism-generated mask as a missingness budget and
+then reshape that budget in time. For example, `mechanism="mar"` with
+`pattern="block"` should be interpreted as MAR-informed block missingness, not
+as every final missing point independently following the original MAR
+probability.
 
 For step-by-step formulas for each pattern, see
 [Mathematical details](mathematical_details.md).
@@ -74,6 +89,12 @@ Once a feature series becomes missing, all later eligible timesteps remain
 missing. This models participant dropout, study withdrawal, or permanent sensor
 failure.
 
+When the input already contains NaNs, TSGap defines monotonicity over eligible
+timestamps. It allocates the artificial missingness budget to the last eligible
+values in each series. Pre-existing leading, trailing, or intermittent NaNs
+remain missing, but they neither consume the new budget nor determine where the
+artificial dropout begins.
+
 ```python
 X_missing, mask = simulate_missingness(
     X, "mcar", 0.20, seed=42, pattern="monotone"
@@ -122,8 +143,21 @@ Parameters:
 |-----------|---------|-------------|
 | `persist` | `0.8` | Probability of staying missing, in `[0, 1)` |
 
-Rate control: calibrated in expectation. The realized missing rate is
-approximate because each series is sampled from a Markov chain.
+For a partial target missing rate `r`, the implied onset probability must not
+exceed 1. Therefore, the configuration must satisfy:
+
+```{math}
+r \le \frac{1}{2 - persist}
+```
+
+TSGap raises `ValueError` when a partial target rate exceeds this limit instead
+of silently returning a lower rate. For example, `persist=0.8` supports partial
+rates up to approximately `0.8333`; requesting `0.95` is infeasible. A target
+rate of `1.0` is supported as an explicit all-missing special case.
+
+For feasible configurations, rate control is calibrated in expectation. The
+realized missing rate is approximate because each series is sampled from a
+Markov chain.
 
 Alias: `flickering`.
 
@@ -147,11 +181,19 @@ X_missing, mask = simulate_missingness(
 Gilbert-Elliott currently supports only `mechanism="mcar"`. Use `markov` if you
 need a bursty pattern that composes with MAR or MNAR.
 
-For partial missing rates, calibration requires
-`good_loss <= missing_rate < bad_loss`; TSGap raises `ValueError` when the
-requested rate is outside that feasible range. With the defaults
-`bad_loss=1.0` and `good_loss=0.0`, the model reduces to the clean on/off
-behavior of the `markov` pattern.
+For a partial missing rate `r`, calibration requires:
+
+```{math}
+good\_loss \le r \le good\_loss +
+\frac{bad\_loss - good\_loss}{2 - persist}
+```
+
+The upper bound accounts for the fact that the good-to-bad onset probability
+cannot exceed 1. TSGap raises `ValueError` when the requested rate is outside
+this feasible range. For example, with `persist=0.5`, `bad_loss=1.0`, and
+`good_loss=0.0`, the maximum partial rate is approximately `0.6667`. With the
+default loss probabilities, the model reduces to the clean on/off behavior of
+the `markov` pattern.
 
 Gilbert-Elliott uses the MCAR mechanism mask to define the missingness budget
 over eligible entries, then reshapes that budget into a channel-style burst
@@ -173,7 +215,8 @@ Aliases: `gilbert-elliott`, `gilbert`, `burst`.
 - `good_loss` must satisfy `0 <= good_loss < bad_loss`.
 - `bad_loss` must satisfy `0 < bad_loss <= 1`.
 - `persist` must satisfy `0 <= persist < 1`.
-- For partial rates, `good_loss <= missing_rate < bad_loss` is required.
+- Partial rates must lie between `good_loss` and
+  `good_loss + (bad_loss - good_loss) / (2 - persist)`, inclusive.
 - If `missing_rate=0`, no new values are artificially masked.
 - If `missing_rate=1`, all eligible values are masked, regardless of
   `bad_loss` and `good_loss`.
@@ -192,10 +235,10 @@ Different patterns control the target rate differently:
 |---------|---------------|
 | `pointwise` with MCAR | Exact count up to rounding |
 | `pointwise` with MAR/MNAR | Calibrated probability, approximate realized rate |
-| `block` | Preserves the mechanism missing count when enough eligible positions are available |
-| `monotone` | Allocates the mechanism missing budget into dropout tails, with rounding adjustment |
+| `block` | Preserves the mechanism missing count when enough eligible positions are available; emits a warning if the requested block count cannot be reached |
+| `monotone` | Allocates the mechanism missing budget into suffixes of eligible timestamps, with exact rounding adjustment |
 | `decay` | Resamples the mechanism missing count using temporal weights |
-| `markov` | Calibrated in expectation; realized rate is approximate |
+| `markov` | Calibrated in expectation when `r <= 1 / (2 - persist)`; realized rate is approximate. Rate `1.0` is an all-missing special case. |
 | `gilbert_elliott` | MCAR-only. Calibrated in expectation when feasible; realized rate is approximate |
 
 ## Eligibility Guarantees

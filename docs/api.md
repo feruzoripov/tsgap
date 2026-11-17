@@ -1,5 +1,13 @@
 # API Reference
 
+[Installation](installation.md) |
+[Core concepts](concepts.md) |
+[Mechanisms](mechanisms.md) |
+[Patterns](patterns.md) |
+[Mathematical details](mathematical_details.md) |
+[Benchmarking workflow](benchmarking.md) |
+[API reference](api.md)
+
 ## `simulate_missingness`
 
 ```python
@@ -29,22 +37,27 @@ Core parameters:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `X` | `np.ndarray` | Input data, shape `(T, D)` or `(N, T, D)` |
+| `X` | `np.ndarray` | Real numeric data, shape `(T, D)` or `(N, T, D)`. Integer input is promoted to float; Boolean, complex, object, and string arrays are rejected. |
 | `mechanism` | `str` | `"mcar"`, `"mar"`, or `"mnar"` |
 | `missing_rate` | `float` | Target fraction missing, clipped to `[0, 1]` |
 | `seed` | `int \| None` | Random seed |
 | `pattern` | `str` | Missingness pattern |
 
+Unknown mechanism- or pattern-specific keyword arguments raise `TypeError`, so
+misspelled configuration names cannot be silently ignored. Numerical
+configuration values must be finite, and infinite input values are rejected.
+
 Mechanism parameters:
 
 | Parameter | Mechanisms | Default | Description |
 |-----------|------------|---------|-------------|
-| `target` | all | `"all"` | Dimensions to mask |
+| `target` | all | `"all"`; MAR defaults to non-driver dimensions | Dimensions to mask |
 | `driver_dims` | MAR | `[0]` | Driver dimensions |
 | `driver_weights` | MAR | `None` | Per-driver weights |
 | `strength` | MAR, MNAR | `2.0` | Dependency strength |
 | `base_rate` | MAR | `0.01` | Minimum probability floor |
 | `direction` | MAR | `"positive"` | Driver direction |
+| `allow_self_masking` | MAR | `False` | Allow target/driver overlap for explicit hybrid behavior |
 | `mnar_mode` | MNAR | `"extreme"` | MNAR scoring mode |
 
 Pattern parameters:
@@ -58,12 +71,26 @@ Pattern parameters:
 | `decay_center` | decay | `0.7` | Normalized ramp center |
 | `persist` | markov, gilbert_elliott | `0.8` | Missing/bad-state persistence. For `gilbert_elliott`, MCAR only. |
 | `bad_loss` | gilbert_elliott | `1.0` | Loss probability in the bad state. MCAR only. |
-| `good_loss` | gilbert_elliott | `0.0` | Loss probability in the good state. MCAR only. For partial rates, `good_loss <= missing_rate < bad_loss`. |
+| `good_loss` | gilbert_elliott | `0.0` | Loss probability in the good state. MCAR only. See the feasibility constraint below. |
 
 `gilbert_elliott` supports only `mechanism="mcar"`. `missing_rate=0` adds no
 artificial missingness and `missing_rate=1` masks all eligible entries. Partial
-rates outside the feasible range defined by `good_loss` and `bad_loss` raise
-`ValueError`.
+rates must satisfy `good_loss <= missing_rate <= good_loss + (bad_loss -
+good_loss) / (2 - persist)`. Rates outside this persistence-aware feasible
+range raise `ValueError`.
+
+For the Markov pattern, partial missing rates must satisfy
+`missing_rate <= 1 / (2 - persist)`. Infeasible combinations raise
+`ValueError`; `missing_rate=1.0` remains an explicit all-missing special case.
+
+For `pointwise`, MAR and MNAR dependencies apply to the final individual masked
+positions. For temporal patterns such as `block`, `decay`, `markov`, and
+`monotone`, MAR/MNAR generate a mechanism-informed missingness budget that is
+then reshaped in time by the selected pattern.
+
+The monotone pattern applies its allocated budget to the final eligible
+timestamps in each series. Pre-existing NaNs remain missing but do not consume
+the artificial missingness budget or define the artificial dropout point.
 
 ## `simulate_many_rates`
 

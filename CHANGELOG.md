@@ -1,5 +1,30 @@
 # Changelog
 
+## Version 0.8.0 - pyOpenSci Review Release
+
+### Changed
+
+- Define MAR targets as non-driver dimensions by default and require explicit
+  opt-in for self-dependent hybrid masking.
+- Reject infeasible Markov and Gilbert-Elliott missing-rate configurations.
+- Allocate monotone dropout over eligible observations when inputs contain
+  pre-existing gaps.
+- Require Python 3.11 or newer and test Python 3.11 through 3.14.
+- Reject unknown configuration arguments, non-finite parameters, infinite
+  input values, and unsupported input dtypes; promote integer input to float.
+
+### Documentation and Testing
+
+- Clarify strict pointwise mechanisms versus temporally structured,
+  mechanism-informed masks.
+- Define the eligible-entry missing-rate denominator and pattern-specific rate
+  guarantees.
+- Add regression and scientific-invariant tests covering pyOpenSci review
+  findings, pre-existing missingness, rate validity, and mask consistency.
+- Add Codecov reporting to continuous integration.
+
+---
+
 ## Version 0.7.0 - Gilbert-Elliott Burst Pattern
 
 ### Added
